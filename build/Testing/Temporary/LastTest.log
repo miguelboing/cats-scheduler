@@ -1,0 +1,32 @@
+Start testing: Sep 17 09:54 UTC
+----------------------------------------------------------
+1/1 Testing: simple_tests
+1/1 Test: simple_tests
+Command: "/home/runner/work/scheduler/scheduler/build/tests/simple_tests"
+Directory: /home/runner/work/scheduler/scheduler/build/tests
+"simple_tests" start time: Sep 17 09:54 UTC
+Output:
+----------------------------------------------------------
+=== Running Simple Tests ===
+Testing Task creation...
+✓ Task creation test passed
+Testing Scheduler creation...
+✓ Scheduler creation test passed
+Testing basic scheduling...
+Running FCFS (First Come First Served) algorithm...
+Executing task 1 (priority: 5, duration: 50ms)...
+Scheduling completed. 1 tasks processed.
+✓ Basic scheduling test passed
+Testing Simulator creation...
+✓ Simulator creation test passed
+
+✓ All tests passed!
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"simple_tests" end time: Sep 17 09:54 UTC
+"simple_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 17 09:54 UTC

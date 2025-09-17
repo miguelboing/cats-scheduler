@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/runner/work/scheduler/scheduler/build/cmake_install.cmake",
+		"/home/runner/work/scheduler/scheduler/build/tests/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
