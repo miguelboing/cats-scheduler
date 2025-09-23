@@ -1,23 +1,37 @@
 #pragma once
+
 #include <vector>
 #include <memory>
 
-#include "system_model/packet.hpp"
-
-class Task; /* Foward declaration */
+#include "system_model/system_model.hpp"
 
 class BaseScheduler {
 public:
     virtual ~BaseScheduler() = default;
 
-    /* Pure virtual functions that all schedulers must implement */
-    virtual void addTask(std::shared_ptr<Task> task) = 0;
-    //virtual std::shared_ptr<Process> getNextProcess() = 0;
-    virtual std::vector<std::shared_ptr<Task>> ScheduleTasks() = 0;
-    //virtual bool hasTasks() const = 0;
-    virtual std::string getName() const = 0;
+    void add_queue(std::shared_ptr<std::vector<packet_t>> queue_packet);
 
-private:
-    std::vector<std::shared_ptr<Task>> task_queue;
+    void reset_scheduler();
+
+    /* Pure virtual functions that all schedulers must implement */
+    virtual schedule_result_t schedule_packets(system_model_t system_model) = 0;
+
+    virtual std::string get_name() const = 0;
+
+    std::shared_ptr<std::vector<packet_t>> queue_packet; /* Vector that points to the queue to be scheduled */
+
+    schedule_result_t schedule_result;
+
+protected:
+    std::shared_ptr<std::vector<packet_t>> priv_queue_packet; /* Internal variable to handle iterations of queue_packet*/
 };
+
+inline void BaseScheduler::add_queue(std::shared_ptr<std::vector<packet_t>> queue_packet) {
+    this->queue_packet = queue_packet;
+    this->priv_queue_packet = queue_packet;
+}
+
+inline void BaseScheduler::reset_scheduler() {
+    this->priv_queue_packet = this->queue_packet;
+}
 
