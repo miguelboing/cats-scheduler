@@ -1,13 +1,19 @@
 #pragma once
+
+#include <memory>
+
 #include "schedulers/base_scheduler.hpp"
 
 class EDF_scheduler : public BaseScheduler {
 public:
-    void addTask(std::shared_ptr<Task> task) override;
+    schedule_result_t schedule_packets(system_model_t system_model) override;
 
-    std::vector<std::shared_ptr<Task>> ScheduleTasks() override;
-
-    std::string getName() const override;
-
+    std::string get_name() const override;
+private:
+ std::vector<packet_t> sort_packets_by_deadline();
 };
+
+
+
+
 
