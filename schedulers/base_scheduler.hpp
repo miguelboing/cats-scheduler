@@ -23,12 +23,14 @@ public:
     schedule_result_t schedule_result;
 
 protected:
+    unsigned int time_frame_counter = 0U;
+
     std::shared_ptr<std::vector<packet_t>> priv_queue_packet; /* Internal variable to handle iterations of queue_packet*/
 };
 
 inline void BaseScheduler::add_queue(std::shared_ptr<std::vector<packet_t>> queue_packet) {
-    this->queue_packet = queue_packet;
-    this->priv_queue_packet = queue_packet;
+    this->queue_packet = queue_packet; /* Keep an untouched reference to the original queue */
+    this->priv_queue_packet = std::make_shared<std::vector<packet_t>>(*queue_packet); /* Make a copy of the queue to update deadlines */
 }
 
 inline void BaseScheduler::reset_scheduler() {
