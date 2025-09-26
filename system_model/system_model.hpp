@@ -6,9 +6,10 @@
 typedef struct
 {
 //    unsigned int period; /* T: Periodicy related with the task */
-    unsigned int deadline; /* D: This is the relative deadline */
-    unsigned int comp_cost; /* C: A unit consumes one frame */
-    unsigned int success_rate; /* S: Sureness that this packet was received */
+    unsigned int task_id;       /* ID: Tasks unique identifier */
+    unsigned int deadline;      /* D: This is the relative deadline */
+    unsigned int comp_cost;     /* C: A unit consumes one frame */
+    unsigned int success_rate;  /* S: Sureness that this packet was received */
 } packet_t;
 
 typedef struct
@@ -19,9 +20,9 @@ typedef struct
 } system_model_t;
 
 typedef struct {
-    std::vector<int> frame_allocation;  /* task ID per frame */
-    bool is_feasible;                   /* whether all deadlines met */
-    std::vector<int> missed_deadlines;  /* tasks that missed deadlines */
+    std::vector<unsigned int> frame_allocation;  /* task ID per frame */
+    bool is_feasible;                            /* whether all deadlines met */
+    std::vector<packet_t> missed_deadlines;      /* tasks that missed deadlines */
 }schedule_result_t;
 
 //class PacketQueue {
