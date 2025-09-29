@@ -1,1 +1,36 @@
-#include <stdio.h>
+#include <iostream>
+#include <vector>
+#include <memory>
+
+#include "system_model/system_model.hpp"
+#include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
+
+int main()
+{
+	EDF_scheduler edf_sch;
+	system_model_t system_model = {{20}}; /* 20 frames */
+
+	std::vector<packet_t> packets =
+	{
+	 {1, 5, 2, 90},  /* task_id=1, deadline=5, comp_cost=3, success_rate=90 */
+         {2, 4, 1, 85},  /* task_id=2, deadline=4, comp_cost=1, success_rate=85 */
+	};
+
+        auto packet_queue = std::make_shared<std::vector<packet_t>>(packets);
+
+	edf_sch.add_queue(packet_queue);
+
+        schedule_result_t result = edf_sch.schedule_packets(system_model);
+
+        std::cout << "Frame allocation: [";
+        bool first = true;
+        for (const auto& frame : result.frame_allocation) {
+            if (!first) std::cout << ", ";
+            std::cout << frame;
+            first = false;
+        }
+        std::cout << "]" << std::endl;
+
+	return 0;
+}
+
