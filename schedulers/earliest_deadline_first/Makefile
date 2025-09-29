@@ -1,4 +1,4 @@
-TARGET=edf
+TARGET=edf_scheduler
 
 ifndef BUILD_DIR
 	BUILD_DIR=$(CUR_DIR)
@@ -6,13 +6,13 @@ endif
 
 CPP=g++
 
-CFLAGS=
-
 LDFLAGS=
 
 .PHONY: all
-all:
-	$(CPP) $(CFLAGS) $(TARGET).c -o $(BUILD_DIR)/$(TARGET).o
+all: $(TARGET)
+
+$(TARGET): $(TARGET).cpp
+	$(CPP) $(CFLAGS) -c $(TARGET).cpp -o $(BUILD_DIR)/$(TARGET).o
 
 .PHONY: clean
 clean:

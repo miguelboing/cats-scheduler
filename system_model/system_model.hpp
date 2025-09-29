@@ -6,7 +6,7 @@
 typedef struct
 {
 //    unsigned int period; /* T: Periodicy related with the task */
-    unsigned int task_id;       /* ID: Tasks unique identifier */
+    unsigned int packet_id;       /* ID: Tasks unique identifier */
     unsigned int deadline;      /* D: This is the relative deadline */
     unsigned int comp_cost;     /* C: A unit consumes one frame */
     unsigned int success_rate;  /* S: Sureness that this packet was received */
