@@ -12,8 +12,8 @@ int main()
 
 	std::vector<packet_t> packets =
 	{
-	 {1, 5, 2, 90},  /* task_id=1, deadline=5, comp_cost=3, success_rate=90 */
-         {2, 4, 1, 85},  /* task_id=2, deadline=4, comp_cost=1, success_rate=85 */
+	 {1, 5, 2, 90},  /* packet_id=1, deadline=5, comp_cost=2, success_rate=90 */
+         {2, 4, 1, 85},  /* packet_id=2, deadline=4, comp_cost=1, success_rate=85 */
 	};
 
         auto packet_queue = std::make_shared<std::vector<packet_t>>(packets);

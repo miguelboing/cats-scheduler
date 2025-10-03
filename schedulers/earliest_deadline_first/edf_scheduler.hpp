@@ -4,13 +4,39 @@
 
 #include "schedulers/base_scheduler.hpp"
 
+struct edf_packet_t {
+    packet_t original_packet;  /* The original packet data */
+
+    /* EDF-specific internal parameters */
+    unsigned int original_deadline;    /* Store original deadline for reset */
+    unsigned int remaining_comp_cost;  /* Remaining computation time */
+    bool is_available;                 /* Whether packet is currently scheduled */
+    unsigned int last_execution_frame; /* Last frame when this packet was executed */
+    unsigned int period;               /* Period for periodic tasks */
+
+    /* Constructor */
+    edf_packet_t(const packet_t& packet) : original_packet(packet) {
+        original_deadline = packet.deadline;
+        remaining_comp_cost = packet.comp_cost;
+        is_available = true;
+        period = packet.deadline; /* Assume deadline = period initially */
+    }
+
+    /* Easy access to original fields */
+    unsigned int& packet_id() { return original_packet.packet_id; }
+    unsigned int& deadline() { return original_packet.deadline; }
+    unsigned int& comp_cost() { return original_packet.comp_cost; }
+    unsigned int& success_rate() { return original_packet.success_rate; }
+};
+
 class EDF_scheduler : public BaseScheduler {
 public:
     schedule_result_t schedule_packets(system_model_t system_model) override;
 
     std::string get_name() const override;
 private:
-//    std::vector<packet_t> sort_packets_by_deadline();
+      std::vector<edf_packet_t> edf_packets;
+//      static const edf_packet_t idle_task; /* This is run when no other task is available*/
 };
 
 
