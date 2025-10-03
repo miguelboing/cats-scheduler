@@ -6,17 +6,7 @@
 
 schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
 {
-//    edf_packet_t edf_packet(this->priv_queue_packet);
-//    schedule_result_t schedule_result;
-//    schedule_result.is_feasible = true;
-//
-//    BaseScheduler::reset_scheduler();
-//
-//    while (this->time_frame_counter < system_model.number_of_frames)
-//    {
-//        /* Check if there is any missed deadline */
-//        for (auto& packet: *edf_packet)
-    edf_packets.clear();
+   edf_packets.clear();
     for (const auto& packet : *this->priv_queue_packet) {
         edf_packets.emplace_back(packet);
     }
@@ -49,7 +39,7 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
             }
             else /* Check if the unavailable (i.e. already scheduled) packet has arrived again */
             {
-                if (((packet.deadline()) < this->time_frame_counter))
+                if (packet.deadline() - packet.period <= this->time_frame_counter)
                 {
                     packet.is_available = true;
                 }
