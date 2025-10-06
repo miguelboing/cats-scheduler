@@ -4,6 +4,8 @@
 
 #include "edf_scheduler.hpp"
 
+EDF_scheduler::EDF_scheduler(unsigned int tx_power): tx_power(tx_power) {};
+
 schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
 {
    edf_packets.clear();
@@ -15,7 +17,7 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
 
     BaseScheduler::reset_scheduler();
 
-    while (this->time_frame_counter < system_model.number_of_frames) 
+    while (this->time_frame_counter < system_model.number_of_frames)
     {
         /* Check if there is any missed deadline */
         for (auto& packet : edf_packets)
@@ -60,7 +62,7 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
             /* No task is available, run idle */
             this->time_frame_counter++;
 
-            schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(), 1, 0);  /* Append comp_cost copies of packet_id */
+            schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(), 1, {0, 0});  /* Schedule idle task with comp_cost=1, id=0 and tx_power=0 */
 
             continue; /* Go to iteration of the while */
 
@@ -70,7 +72,7 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
         lowest_packet->is_available = false;  // Add semicolon
         this->time_frame_counter += lowest_packet->comp_cost();
         schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(),
-            lowest_packet->comp_cost(), lowest_packet->packet_id());
+            lowest_packet->comp_cost(), {lowest_packet->packet_id(), this->tx_power});
 
         /* Update the deadline */
         lowest_packet->deadline() += lowest_packet->period;
