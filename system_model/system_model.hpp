@@ -20,20 +20,14 @@ typedef struct
 } system_model_t;
 
 typedef struct {
-    std::vector<unsigned int> frame_allocation;  /* task ID per frame */
-    bool is_feasible;                            /* whether all deadlines met */
-    std::vector<packet_t> missed_deadlines;      /* tasks that missed deadlines */
-} schedule_result_t;
+    unsigned int task_id; /* task ID per frame */
+    unsigned int tx_power;
+} frame_allocation_t;
 
-//class PacketQueue {
-//public:
-//    void push_packet(std::shared_ptr<packet_t> packet);  // Parameter needed
-//    std::shared_ptr<packet_t> pop_packet();             // Get packet from queue
-//    bool empty() const;                                 // Check if empty
-//    size_t size() const;                               // Get queue size
-//
-//private:
-//    std::vector<std::shared_ptr<packet_t>> queue;
-//};
+typedef struct {
+    std::vector<frame_allocation_t> frame_allocation;
+    bool is_feasible;                                  /* whether all deadlines met */
+    std::vector<packet_t> missed_deadlines;            /* tasks that missed deadlines */
+} schedule_result_t;
 
 
