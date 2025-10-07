@@ -4,11 +4,15 @@
 
 #include "system_model/system_model.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
+#include "system_model/physical_channel/physical_channel.hpp"
 
 int main()
 {
-	EDF_scheduler edf_sch;
+	EDF_scheduler edf_sch(10); /* Transmit everything with 10W */
+
 	system_model_t system_model = {{20}}; /* 20 frames */
+
+        PHYChannel phy_channel(system_model.number_of_frames, system_model.channel_condition, BERNOULLI);
 
 	std::vector<packet_t> packets =
 	{
@@ -26,7 +30,16 @@ int main()
         bool first = true;
         for (const auto& frame : result.frame_allocation) {
             if (!first) std::cout << ", ";
-            std::cout << frame;
+            std::cout << "(" << frame.task_id << ", " << frame.tx_power << ")";
+            first = false;
+        }
+        std::cout << "]" << std::endl;
+
+        std::cout << "Channel probabilities: [";
+        first = true;
+        for (const auto& frame_state: *system_model.channel_condition) {
+            if (!first) std::cout << ", ";
+            std::cout << frame_state;
             first = false;
         }
         std::cout << "]" << std::endl;
