@@ -12,12 +12,17 @@ typedef struct
     unsigned int success_rate;  /* S: Sureness that this packet was received */
 } packet_t;
 
-typedef struct
+struct system_model_t
 {
-    unsigned int number_of_frames; /* This is the total number of frames available to transmit */
-//    float channel_condition[number_of_frames][3]; /* Channel conditions for each frame at different power levels */
+    unsigned int number_of_frames;             /* This is the total number of frames available to transmit */
+    std::shared_ptr<std::vector<double>> channel_condition; /* Channel conditions for each frame at different power levels */
 
-} system_model_t;
+    system_model_t(unsigned int num_frames)
+        : number_of_frames(num_frames),
+          channel_condition(std::make_shared<std::vector<double>>(num_frames))
+    {
+    }
+};
 
 typedef struct {
     unsigned int task_id; /* task ID per frame */
