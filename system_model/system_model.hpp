@@ -5,16 +5,16 @@
 
 typedef struct
 {
-//    unsigned int period;        /* T: Periodicy related with the task */
-    unsigned int packet_id;     /* ID: Tasks unique identifier */
-    unsigned int deadline;      /* D: This is the relative deadline */
-    unsigned int comp_cost;     /* C: A unit consumes one frame */
-    unsigned int success_rate;  /* S: Sureness that this packet was received */
+//    unsigned int period;          /* T : Periodicy related with the task */
+    unsigned int packet_id;         /* ID: Tasks unique identifier */
+    unsigned int deadline;          /* D : This is the relative deadline */
+    unsigned int comp_cost;         /* C : A unit consumes one frame */
+    unsigned int success_rate_req;  /* S : Success rate requirement for the packet */
 } packet_t;
 
 struct system_model_t
 {
-    unsigned int number_of_frames;             /* This is the total number of frames available to transmit */
+    unsigned int number_of_frames;                          /* This is the total number of frames available to transmit */
     std::shared_ptr<std::vector<double>> channel_condition; /* Channel conditions for each frame at different power levels */
 
     system_model_t(unsigned int num_frames)
