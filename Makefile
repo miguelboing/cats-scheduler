@@ -11,7 +11,7 @@ TARGET = main
 all: $(TARGET)
 
 $(TARGET): $(TARGET).cpp edf_scheduler physical_channel receiver
-	$(CPP) $(CFLAGS) $(TARGET).cpp physical_channel.o edf_scheduler.o receiver.o -o $(TARGET)
+	$(CPP) $(CFLAGS) $(TARGET).cpp physical_channel.o edf_scheduler.o receiver.o -o $(TARGET).o
 
 .PHONY: edf_scheduler
 edf_scheduler: schedulers/earliest_deadline_first/Makefile
