@@ -35,4 +35,8 @@ typedef struct {
     std::vector<packet_t> missed_deadlines;            /* tasks that missed deadlines */
 } schedule_result_t;
 
+typedef struct {
+    std::vector<char> received_frames;
+    std::vector<bool> lost_frames;
+} receiver_result_t;
 
