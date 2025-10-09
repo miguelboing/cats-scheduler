@@ -47,7 +47,16 @@ int main()
         }
         std::cout << "]" << std::endl;
 
-        receiver.recv_packets(system_model, result);
+        receiver_result_t receiver_result = receiver.recv_packets(system_model, result);
+
+        std::cout << "Received Frames: [";
+        first = true;
+        for (const auto& frame: receiver_result.received_frames) {
+            if (!first) std::cout << ", ";
+            std::cout << frame;
+            first = false;
+        }
+        std::cout << "]" << std::endl;
 
 	return 0;
 }
