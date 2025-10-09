@@ -5,14 +5,17 @@
 #include "system_model/system_model.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
 #include "system_model/physical_channel/physical_channel.hpp"
+#include "system_model/receiver/receiver.hpp"
 
 int main()
 {
 	EDF_scheduler edf_sch(10); /* Transmit everything with 10W */
 
+        Receiver receiver;
+
 	system_model_t system_model = {{20}}; /* 20 frames */
 
-        PHYChannel phy_channel(system_model.number_of_frames, system_model.channel_condition, BERNOULLI);
+        PHYChannel phy_channel(system_model.number_of_frames, system_model.channel_condition, NORMAL);
 
 	std::vector<packet_t> packets =
 	{
@@ -43,6 +46,8 @@ int main()
             first = false;
         }
         std::cout << "]" << std::endl;
+
+        receiver.recv_packets(system_model, result);
 
 	return 0;
 }
