@@ -12,23 +12,26 @@ PHYChannel::PHYChannel(unsigned int number_of_frames, std::shared_ptr<std::vecto
 
 void PHYChannel::gen_frame_probabilities()
 {
-    std::bernoulli_distribution distribution(0.0);
-
     switch(this->prob_distr)
     {
     case BERNOULLI: /* Initialize bernoulli distribution */
-        distribution = std::bernoulli_distribution(0.5);
-
+        {
+            std::bernoulli_distribution distribution(0.5);
+            this->fill_channel_condition(distribution);
+        }
+        break;
+    case NORMAL:
+        {
+            std::normal_distribution distribution(0.8, 0.4);
+            this->fill_channel_condition(distribution);
+        }
         break;
     default:
-        distribution = std::bernoulli_distribution(0.0);
-
+        {
+            std::bernoulli_distribution distribution(0.0);
+            this->fill_channel_condition(distribution);
+        }
         break;
-    }
-
-    for (unsigned int i=0U; i < this->number_of_frames; ++i)
-    {
-        (*this->channel_condition)[i] = (double) distribution(this->generator);
     }
 }
 
