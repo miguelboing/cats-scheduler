@@ -20,12 +20,14 @@ struct system_model_t
     system_model_t(unsigned int num_frames)
         : number_of_frames(num_frames),
           channel_condition(std::make_shared<std::vector<double>>(num_frames))
-    {
-    }
+    {}
+
 };
 
 typedef struct {
-    unsigned int task_id; /* task ID per frame */
+    unsigned int packet_id;        /* Packet ID per frame */
+    unsigned int packet_frame_id;  /* The frame count for each packet */
+    unsigned int packet_count;     /* This is the counter of how many packets have been sent using this packet_id disregarding packet_frame_id */
     unsigned int tx_power;
 } frame_allocation_t;
 
