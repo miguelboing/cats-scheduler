@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <memory>
+#include <string>
 
 typedef struct
 {
@@ -12,16 +13,33 @@ typedef struct
     unsigned int success_rate_req;  /* S : Success rate requirement for the packet */
 } packet_t;
 
+struct channel_t
+{
+    std::string channel_frequency;
+    std::shared_ptr<std::vector<std::vector<double>>> channel_condition; /* This is a 2D array frame x power */
+
+    channel_t(unsigned int number_of_frames) /* We are going to create three levels of power for now */
+    {
+        channel_condition = std::make_shared<std::vector<std::vector<double>>>(
+              number_of_frames, std::vector<double>(3));
+    }
+};
+
 struct system_model_t
 {
     unsigned int number_of_frames;                          /* This is the total number of frames available to transmit */
-    std::shared_ptr<std::vector<double>> channel_condition; /* Channel conditions for each frame at different power levels */
+    std::shared_ptr<std::vector<channel_t>> channels;       /* Channel conditions for each frame at different power levels */
 
-    system_model_t(unsigned int num_frames)
+    system_model_t(unsigned int num_frames, unsigned int num_channels)
         : number_of_frames(num_frames),
-          channel_condition(std::make_shared<std::vector<double>>(num_frames))
-    {}
 
+          channels(std::make_shared<std::vector<channel_t>>())  /* 0 channels initially */
+    {
+        for (unsigned int i = 0; i < num_channels; ++i)
+        {
+            channels->push_back(channel_t(num_frames));
+        }
+    }
 };
 
 typedef struct {
