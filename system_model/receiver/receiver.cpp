@@ -23,7 +23,7 @@ receiver_result_t Receiver::recv_packets(system_model_t system_model, schedule_r
 
         if (prob_result)
         {
-            receiver_result.received_frames.push_back('0' + (char)(schedule_result.frame_allocation[i].task_id));
+            receiver_result.received_frames.push_back('0' + (char)(schedule_result.frame_allocation[i].packet_id));
         }
         else
         {
