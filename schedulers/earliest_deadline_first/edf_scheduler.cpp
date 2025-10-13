@@ -59,10 +59,10 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
         }
 
         if (lowest_packet == nullptr) {
-            /* No task is available, run idle */
+            /* No packet is available, run idle */
             this->time_frame_counter++;
 
-            schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(), 1, {0, 0});  /* Schedule idle task with comp_cost=1, id=0 and tx_power=0 */
+            schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(), 1, {0, 0, 0, 0}); /* Schedule idle packet with comp_cost=1, packet_id=0, ap and tx_power=0 */
 
             continue; /* Go to iteration of the while */
 
@@ -70,9 +70,18 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
 
         /* Execute the packet transmission */
         lowest_packet->is_available = false;  // Add semicolon
+        lowest_packet->packet_count++;
         this->time_frame_counter += lowest_packet->comp_cost();
-        schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(),
-            lowest_packet->comp_cost(), {lowest_packet->packet_id(), this->tx_power});
+
+        for (unsigned int frame_id = 1; frame_id <= lowest_packet->comp_cost(); ++frame_id)
+        {
+            schedule_result.frame_allocation.push_back({
+            lowest_packet->packet_id(),      /* packet_id */
+            frame_id,                        /* packet_frame_id (1 to comp_cost) */
+            lowest_packet->packet_count,     /* packet_count */
+            this->tx_power                   /* tx_power */
+            });
+        }
 
         /* Update the deadline */
         lowest_packet->deadline() += lowest_packet->period;

@@ -10,9 +10,10 @@ struct edf_packet_t {
     /* EDF-specific internal parameters */
     unsigned int original_deadline;    /* Store original deadline for reset */
     unsigned int remaining_comp_cost;  /* Remaining computation time */
-    bool is_available;                 /* Whether packet is currently scheduled */
+    bool         is_available;         /* Whether packet is currently scheduled */
     unsigned int last_execution_frame; /* Last frame when this packet was executed */
     unsigned int period;               /* Period for periodic tasks */
+    unsigned int packet_count;         /* Number of times this packet has been transmited */
 
     /* Constructor */
     edf_packet_t(const packet_t& packet) : original_packet(packet) {
@@ -20,6 +21,7 @@ struct edf_packet_t {
         remaining_comp_cost = packet.comp_cost;
         is_available = true;
         period = packet.deadline; /* Assume deadline = period initially */
+        packet_count = 0;
     }
 
     /* Easy access to original fields */
