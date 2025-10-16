@@ -15,29 +15,34 @@ typedef struct
 
 struct channel_t
 {
-    std::string channel_frequency;
+    unsigned int frequency;
+    std::vector<unsigned int> tx_power_levels;
     std::shared_ptr<std::vector<std::vector<double>>> channel_condition; /* This is a 2D array frame x power */
+    size_t num_power_levels;
 
-    channel_t(unsigned int number_of_frames) /* We are going to create three levels of power for now */
+    channel_t(unsigned int frequency, unsigned int num_frames, std::vector<unsigned int> tx_power_levels):
+        frequency(frequency), tx_power_levels(tx_power_levels),
+        num_power_levels(tx_power_levels.size())
     {
         channel_condition = std::make_shared<std::vector<std::vector<double>>>(
-              number_of_frames, std::vector<double>(3));
+        num_power_levels, std::vector<double>(num_frames));
     }
 };
 
 struct system_model_t
 {
-    unsigned int number_of_frames;                          /* This is the total number of frames available to transmit */
-    std::shared_ptr<std::vector<channel_t>> channels;       /* Channel conditions for each frame at different power levels */
+    unsigned int number_of_frames;                     /* This is the total number of frames available to transmit */
 
-    system_model_t(unsigned int num_frames, unsigned int num_channels)
-        : number_of_frames(num_frames),
+    std::vector<unsigned int> tx_power_levels;         /* Possible TX Values for this system model */
+    std::shared_ptr<std::vector<channel_t>> channels;  /* Vector with the different channels available for transmission */
 
+    system_model_t(unsigned int num_frames, std::vector<unsigned int> frequencies, std::vector<unsigned int> tx_power_levels)
+        : number_of_frames(num_frames), tx_power_levels(tx_power_levels),
           channels(std::make_shared<std::vector<channel_t>>())  /* 0 channels initially */
     {
-        for (unsigned int i = 0; i < num_channels; ++i)
+        for (auto const& frequency: frequencies)
         {
-            channels->push_back(channel_t(num_frames));
+            channels->push_back(channel_t(frequency, num_frames, tx_power_levels));
         }
     }
 };
