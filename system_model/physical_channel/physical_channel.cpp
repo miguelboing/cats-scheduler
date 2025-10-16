@@ -3,33 +3,52 @@
 
 #include "physical_channel.hpp"
 
-PHYChannel::PHYChannel(unsigned int number_of_frames, std::shared_ptr<std::vector<double>> channel_condition, prob_distr_e prob_distr):
-        number_of_frames(number_of_frames), prob_distr(prob_distr)
+PHYChannel::PHYChannel(system_model_t system_model, prob_distr_e prob_distr):
+    system_model(system_model)
 {
-    this->channel_condition = channel_condition;  // Use the passed shared_ptr
-    this->gen_frame_probabilities();
+    this->gen_frame_probabilities(prob_distr);
 }
 
-void PHYChannel::gen_frame_probabilities()
+void PHYChannel::gen_frame_probabilities(prob_distr_e prob_distr)
 {
+    this->prob_distr = prob_distr;
+
     switch(this->prob_distr)
     {
     case BERNOULLI: /* Initialize bernoulli distribution */
         {
-            std::bernoulli_distribution distribution(0.5);
-            this->fill_channel_condition(distribution);
+            std::vector<std::bernoulli_distribution> distributions =
+            {
+                std::bernoulli_distribution(0.6),
+                std::bernoulli_distribution(0.7),
+                std::bernoulli_distribution(0.8)
+            };
+
+            this->fill_channel_condition(distributions);
         }
         break;
     case NORMAL:
         {
-            std::normal_distribution distribution(0.8, 0.4);
-            this->fill_channel_condition(distribution);
+            std::vector<std::normal_distribution<double>> distributions =
+            {
+                std::normal_distribution<double>(0.6, 0.4),
+                std::normal_distribution<double>(0.7, 0.4),
+                std::normal_distribution<double>(0.8, 0.4)
+            };
+
+            this->fill_channel_condition(distributions);
         }
         break;
     default:
         {
-            std::bernoulli_distribution distribution(0.0);
-            this->fill_channel_condition(distribution);
+            std::vector<std::bernoulli_distribution> distributions =
+            {
+                std::bernoulli_distribution(0.0),
+                std::bernoulli_distribution(0.0),
+                std::bernoulli_distribution(0.0)
+            };
+
+            this->fill_channel_condition(distributions);
         }
         break;
     }

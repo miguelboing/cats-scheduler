@@ -4,6 +4,8 @@
 #include <memory>
 #include <random>
 
+#include "system_model/system_model.hpp"
+
 typedef enum /* This enum defines how the results will be generated */
 {
     BERNOULLI = 0,        /**< . */
@@ -14,24 +16,34 @@ typedef enum /* This enum defines how the results will be generated */
 class PHYChannel
 {
 public:
-    PHYChannel(unsigned int number_of_frames, std::shared_ptr<std::vector<double>> channel_condition, prob_distr_e prob_distr);
-    unsigned int number_of_frames; /* This is the size in frames of the simulation */
+    PHYChannel(system_model_t system_model, prob_distr_e prob_distr);
+    void gen_frame_probabilities(prob_distr_e prob_distr);
+
     prob_distr_e prob_distr;
-    std::shared_ptr<std::vector<double>> channel_condition; /* This is the condition of the channel */
-    void gen_frame_probabilities(void);
+    system_model_t system_model;
 
 private:
     std::default_random_engine generator;
     template<typename Distribution>
-        void fill_channel_condition(Distribution& distribution)
+        void fill_channel_condition(std::vector<Distribution>& distributions)
+    {
+        /* Iterate through each channel */
+        for (size_t ch_idx = 0; ch_idx < system_model.channels->size(); ++ch_idx)
         {
-            for (unsigned int i = 0U; i < this->number_of_frames; ++i)
+            auto& channel = (*system_model.channels)[ch_idx];
+
+            /* For each power level */
+            for (size_t pwr_idx = 0; pwr_idx < distributions.size(); ++pwr_idx)
             {
-                double value = (double) distribution(this->generator);
-                // Clamp value to [0, 1] for valid probability range
-                value = std::max(0.0, std::min(1.0, value));
-                (*this->channel_condition)[i] = value;
-            };
-        };
+                /* For each frame */
+                for (unsigned int frame = 0; frame < system_model.number_of_frames; ++frame)
+                {
+                    double value = (double) distributions[pwr_idx](this->generator);
+                    value = std::max(0.0, std::min(1.0, value));
+                    (*channel.channel_condition)[pwr_idx][frame] = value;
+                }
+            }
+        }
+    }
 };
 
