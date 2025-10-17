@@ -1,0 +1,58 @@
+name: Static Analysis
+
+on:
+  # Runs on 'push' events to specified branches. Output will be printed to the console.
+  push:
+    branches:
+      - dev
+      - main
+
+  # Uses 'pull_request_target' to allow analysis of forked repositories.
+  # Output will be shown in PR comments (unless 'force_console_print' is used).
+  pull_request_target:
+    branches:
+      - "*"
+
+jobs:
+  static_analysis:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: setup init_script
+      shell: bash
+      run: |
+        echo "#!/bin/bash
+
+        # Input args provided by StaticAnalysis action
+        root_dir=\${1}
+        build_dir=\${2}
+        echo \"Hello from the init script! First arg=\${root_dir} second arg=\${build_dir}\"
+
+        add-apt-repository ppa:oibaf/graphics-drivers
+        apt update && apt upgrade -y
+        apt install -y libvulkan1 mesa-vulkan-drivers vulkan-utils" > init_script.sh
+
+    - name: Run Static Analysis
+      uses: JacobDomagala/StaticAnalysis@master
+      with:
+        language: c++
+
+        # Exclude any issues found in ${Project_root_dir}/lib
+        exclude_dir: lib
+
+        use_cmake: false
+
+        # Additional apt packages required before running CMake
+        apt_pckgs: software-properties-common libglu1-mesa-dev freeglut3-dev mesa-common-dev
+
+        # Optional shell script that runs AFTER 'apt_pckgs' and before CMake
+        init_script: init_script.sh
+
+        # Optional Clang-Tidy arguments
+        clang_tidy_args: -checks='*,fuchsia-*,google-*,zircon-*,abseil-*,modernize-use-trailing-return-type'
+
+        # Optional Cppcheck arguments
+        cppcheck_args: --enable=all --suppress=missingIncludeSystem
+
