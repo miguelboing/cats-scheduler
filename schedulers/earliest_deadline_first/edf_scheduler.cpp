@@ -4,7 +4,7 @@
 
 #include "edf_scheduler.hpp"
 
-EDF_scheduler::EDF_scheduler(unsigned int tx_power): tx_power(tx_power) {};
+EDF_scheduler::EDF_scheduler(unsigned int tx_power, unsigned int frequency): tx_power(tx_power), frequency(frequency) {};
 
 schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
 {
@@ -62,14 +62,14 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
             /* No packet is available, run idle */
             this->time_frame_counter++;
 
-            schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(), 1, {0, 0, 0, 0}); /* Schedule idle packet with comp_cost=1, packet_id=0, ap and tx_power=0 */
+            schedule_result.frame_allocation.insert(schedule_result.frame_allocation.end(), 1, {0, 0, 0, 0, 0}); /* Schedule idle packet with comp_cost=1, packet_id=0, ap and tx_power=0 */
 
             continue; /* Go to iteration of the while */
 
         }
 
         /* Execute the packet transmission */
-        lowest_packet->is_available = false;  // Add semicolon
+        lowest_packet->is_available = false;
         lowest_packet->packet_count++;
         this->time_frame_counter += lowest_packet->comp_cost();
 
@@ -79,7 +79,8 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
             lowest_packet->packet_id(),      /* packet_id */
             frame_id,                        /* packet_frame_id (1 to comp_cost) */
             lowest_packet->packet_count,     /* packet_count */
-            this->tx_power                   /* tx_power */
+            this->tx_power,                  /* tx_power */
+            this->frequency                  /* frequency */
             });
         }
 

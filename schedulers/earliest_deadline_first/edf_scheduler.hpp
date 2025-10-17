@@ -33,8 +33,9 @@ struct edf_packet_t {
 
 class EDF_scheduler : public BaseScheduler {
 public:
-    EDF_scheduler(unsigned int tx_power);
+    EDF_scheduler(unsigned int tx_power, unsigned int frequency);
     unsigned int tx_power;
+    unsigned int frequency;
     schedule_result_t schedule_packets(system_model_t system_model) override;
 
     std::string get_name() const override;
