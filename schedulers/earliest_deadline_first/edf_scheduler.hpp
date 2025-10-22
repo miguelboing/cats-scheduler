@@ -25,9 +25,9 @@ struct edf_packet_t {
     }
 
     /* Easy access to original fields */
-    unsigned int& packet_id() { return original_packet.packet_id; }
-    unsigned int& deadline() { return original_packet.deadline; }
-    unsigned int& comp_cost() { return original_packet.comp_cost; }
+    unsigned int& id()               { return original_packet.id; }
+    unsigned int& deadline()         { return original_packet.deadline; }
+    unsigned int& comp_cost()        { return original_packet.comp_cost; }
     unsigned int& success_rate_req() { return original_packet.success_rate_req; }
 };
 
