@@ -2,10 +2,10 @@
 
 #include "fixed_rate.hpp"
 
-FixedRate_buffer::FixedRate_buffer(std::shared_ptr<unsigned int> system_tick, std::vector<fixed_rate_packet_t> packets): packets(packets)
+FixedRate_buffer::FixedRate_buffer(std::shared_ptr<unsigned int> system_tick, std::vector<fixed_rate_packet_t> packets):
+    BaseBuffer(system_tick), packets(packets)
 {
     this->system_tick = system_tick;
-    this->buffer_packet = std::make_shared<std::vector<packet_t>>();
 };
 
 void FixedRate_buffer::generate_packets(void)

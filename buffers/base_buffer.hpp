@@ -12,7 +12,14 @@ class BaseBuffer
 {
 public:
     std::shared_ptr<unsigned int> system_tick;
+
     std::shared_ptr<std::vector<packet_t>> buffer_packet;
+
+    BaseBuffer(std::shared_ptr<unsigned int> system_tick):
+        system_tick(system_tick)
+    {
+        buffer_packet = std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0});
+    }
 
     virtual ~BaseBuffer() = default;
 
