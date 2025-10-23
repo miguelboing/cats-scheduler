@@ -67,7 +67,7 @@ inline void BaseBuffer::update_buffer(packet_t& scheduled_packet)
     }
 
     /* Update the system tick */
-    (*this->system_tick)++;
+    //(*this->system_tick)++;
 }
 
 inline void BaseBuffer::append_packet(packet_t& packet)

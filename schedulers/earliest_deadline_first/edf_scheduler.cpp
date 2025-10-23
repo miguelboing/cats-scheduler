@@ -28,7 +28,7 @@ schedule_result_t EDF_scheduler::schedule_packets(system_model_t system_model)
                 /* Check if the packet missed its deadline */
                 if (((packet.deadline() + packet.comp_cost()) < this->time_frame_counter))
                 {
-                c   std::cout << "Missed packet ID: " << packet.id() << std::endl;
+                    std::cout << "Missed packet ID: " << packet.id() << std::endl;
                     std::cout << "Missed packet deadline: " << packet.deadline() << std::endl;
                     std::cout << "Current time_frame: " << this->time_frame_counter << std::endl;
 

@@ -11,7 +11,7 @@ TARGET = main
 all: $(TARGET)
 
 $(TARGET): $(TARGET).cpp fixed_rate edf_scheduler physical_channel receiver
-	$(CPP) $(CFLAGS) $(TARGET).cpp physical_channel.o edf_scheduler.o receiver.o -o $(TARGET).o
+	$(CPP) $(CFLAGS) $(TARGET).cpp fixed_rate.o physical_channel.o edf_scheduler.o receiver.o -o $(TARGET).o
 
 .PHONY: fixed_rate
 fixed_rate: buffers/fixed_rate/Makefile
