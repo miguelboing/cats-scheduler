@@ -10,12 +10,16 @@ TARGET = main
 .PHONY: all
 all: $(TARGET)
 
-$(TARGET): $(TARGET).cpp fixed_rate edf_scheduler physical_channel receiver
-	$(CPP) $(CFLAGS) $(TARGET).cpp fixed_rate.o physical_channel.o edf_scheduler.o receiver.o -o $(TARGET).o
+$(TARGET): $(TARGET).cpp buffer_packet fixed_rate edf_scheduler physical_channel receiver
+	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o physical_channel.o edf_scheduler.o receiver.o -o $(TARGET).o
+
+.PHONY: buffer_packet
+buffer_packet: buffer_packet/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C buffer_packet
 
 .PHONY: fixed_rate
-fixed_rate: buffers/fixed_rate/Makefile
-	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C buffers/fixed_rate
+fixed_rate: packet_generators/fixed_rate/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C packet_generators/fixed_rate
 
 .PHONY: edf_scheduler
 edf_scheduler: schedulers/earliest_deadline_first/Makefile

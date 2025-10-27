@@ -3,24 +3,28 @@
 #include <memory>
 
 #include "system_model/system_model.hpp"
-#include "buffers/fixed_rate/fixed_rate.hpp"
+#include "buffer_packet/buffer_packet.hpp"
+#include "packet_generators/fixed_rate/fixed_rate.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
 #include "system_model/physical_channel/physical_channel.hpp"
 #include "system_model/receiver/receiver.hpp"
 
 int main()
 {
-    std::vector<fixed_rate_packet_t> fixed_rate_packets;
     std::shared_ptr<unsigned int> system_tick = std::make_shared<unsigned int>(0U);
 
-    fixed_rate_packets.push_back(fixed_rate_packet_t(5U, 2U, 90U, 1U, 5U, 0U));
-    fixed_rate_packets.push_back(fixed_rate_packet_t(4U, 1U, 70U, 2U, 4U, 0U));
+    /* Initialize packet buffer */
+    BufferPacket buffer(system_tick);
+    std::vector<fixed_rate_packet_t> fixed_rate_packets;
 
-    FixedRate_buffer buffer(system_tick, fixed_rate_packets);
+    fixed_rate_packets.push_back(fixed_rate_packet_t(1U, 2U, 90U, 1U, 5U, 0U));
+    fixed_rate_packets.push_back(fixed_rate_packet_t(1U, 1U, 70U, 2U, 4U, 0U));
+
+    FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet);
 
     for (unsigned int i = 0U; i < 20U; i++)
     {
-        buffer.generate_packets();
+        fixed_rate_packet_gen.generate_packets();
 
         std::cout << "Frame " << *system_tick << " - Buffer contents: " << std::endl;
         for (const auto& packet : *buffer.buffer_packet) {

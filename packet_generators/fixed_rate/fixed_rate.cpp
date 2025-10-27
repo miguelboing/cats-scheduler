@@ -2,13 +2,10 @@
 
 #include "fixed_rate.hpp"
 
-FixedRate_buffer::FixedRate_buffer(std::shared_ptr<unsigned int> system_tick, std::vector<fixed_rate_packet_t> packets):
-    BaseBuffer(system_tick), packets(packets)
-{
-    this->system_tick = system_tick;
-};
+FixedRate_PacketGen::FixedRate_PacketGen(std::shared_ptr<unsigned int> system_tick, std::vector<fixed_rate_packet_t> packets, std::shared_ptr<std::vector<packet_t>> buffer_packet):
+    BasePacketGenerator(system_tick, buffer_packet), packets(packets) {};
 
-void FixedRate_buffer::generate_packets(void)
+void FixedRate_PacketGen::generate_packets(void)
 {
     for (auto& packet : packets)
     {
@@ -19,12 +16,12 @@ void FixedRate_buffer::generate_packets(void)
             packet.original_packet.deadline = packet.phase + (packet.relative_deadline * ++packet.count);
 
             /* Spawn a packet to the buffer */
-            this->append_packet(packet.original_packet);
+            this->buffer_packet->push_back(packet.original_packet);
         }
     }
 }
 
-std::string FixedRate_buffer::get_name(void) const
+std::string FixedRate_PacketGen::get_name(void) const
 {
     return "FixedRate";
 }

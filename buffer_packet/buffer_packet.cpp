@@ -1,38 +1,6 @@
-#pragma once
+#include "buffer_packet.hpp"
 
-#include <vector>
-#include <memory>
-#include <iostream>
-#include <algorithm>
-
-#include "system_model/system_model.hpp"
-
-/* This class keeps controls of the arriving packets, transmited packets and missed deadlines */
-class BaseBuffer
-{
-public:
-    std::shared_ptr<unsigned int> system_tick;
-
-    std::shared_ptr<std::vector<packet_t>> buffer_packet;
-
-    BaseBuffer(std::shared_ptr<unsigned int> system_tick):
-        system_tick(system_tick)
-    {
-        buffer_packet = std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0});
-    }
-
-    virtual ~BaseBuffer() = default;
-
-    virtual void generate_packets() = 0;
-
-    void update_buffer(packet_t& packet);
-
-    void append_packet(packet_t& packet);
-
-    virtual std::string get_name() const = 0;
-};
-
-inline void BaseBuffer::update_buffer(packet_t& scheduled_packet)
+void BufferPacket::update_buffer(packet_t& scheduled_packet)
 {
     /* Find packet on the buffer */
     auto packet_it = std::find_if(this->buffer_packet->begin(), this->buffer_packet->end(),
@@ -72,13 +40,9 @@ inline void BaseBuffer::update_buffer(packet_t& scheduled_packet)
             std::cout << "Current time_frame: " << *this->system_tick << std::endl;
         }
     }
-
-    /* Update the system tick */
-    //(*this->system_tick)++;
 }
 
-inline void BaseBuffer::append_packet(packet_t& packet)
+std::string BufferPacket::get_name()
 {
-    this->buffer_packet->push_back(packet);
+    return "BufferPacket";
 }
-

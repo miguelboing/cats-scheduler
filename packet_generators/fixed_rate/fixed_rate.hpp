@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "buffers/base_buffer.hpp"
+#include "packet_generators/base_packet_generator.hpp"
 #include "system_model/system_model.hpp"
 
 struct fixed_rate_packet_t
@@ -32,12 +32,12 @@ struct fixed_rate_packet_t
     unsigned int& success_rate_req() { return original_packet.success_rate_req; }
 };
 
-class FixedRate_buffer: public BaseBuffer
+class FixedRate_PacketGen: public BasePacketGenerator
 {
 public:
-    FixedRate_buffer(std::shared_ptr<unsigned int> system_tick, std::vector<fixed_rate_packet_t> packets);
-    void generate_packets() override;
-    std::string get_name() const override;
+    FixedRate_PacketGen(std::shared_ptr<unsigned int> system_tick, std::vector<fixed_rate_packet_t> packets, std::shared_ptr<std::vector<packet_t>> buffer_packet);
+    void generate_packets(void) override;
+    std::string get_name(void) const override;
 
 private:
     std::vector<fixed_rate_packet_t> packets;
