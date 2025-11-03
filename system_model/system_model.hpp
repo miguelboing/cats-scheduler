@@ -7,6 +7,7 @@
 typedef struct
 {
     unsigned int id;                /* ID: Tasks unique identifier */
+    unsigned int count;             /* PC: Identifier between packets with the same ID */
     unsigned int deadline;          /* D : This is the relative deadline */
     unsigned int comp_cost;         /* C : A unit consumes one frame */
     unsigned int success_rate_req;  /* S : Success rate requirement for the packet */
