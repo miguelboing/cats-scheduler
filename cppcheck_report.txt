@@ -1,42 +1,12 @@
-buffer_packet/buffer_packet.hpp:22:9: performance: Variable 'buffer_packet' is assigned in constructor body. Consider performing initialization in initialization list. [useInitializationList]
-        buffer_packet = std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0});
-        ^
-buffer_packet/buffer_packet.hpp:29:17: performance:inconclusive: Technically the member function 'BufferPacket::get_name' can be static (but you may consider moving to unnamed namespace). [functionStatic]
-    std::string get_name();
-                ^
-buffer_packet/buffer_packet.cpp:45:27: note: Technically the member function 'BufferPacket::get_name' can be static (but you may consider moving to unnamed namespace).
-std::string BufferPacket::get_name()
-                          ^
-buffer_packet/buffer_packet.hpp:29:17: note: Technically the member function 'BufferPacket::get_name' can be static (but you may consider moving to unnamed namespace).
-    std::string get_name();
-                ^
-buffer_packet/buffer_packet.hpp:18:5: style: Class 'BufferPacket' has a constructor with 1 argument that is not explicit. [noExplicitConstructor]
-    BufferPacket(std::shared_ptr<unsigned int> system_tick):
-    ^
-buffer_packet/buffer_packet.cpp:3:44: style:inconclusive: Function 'update_buffer' argument 1 names different: declaration 'packet' definition 'scheduled_packet'. [funcArgNamesDifferent]
-void BufferPacket::update_buffer(packet_t& scheduled_packet)
-                                           ^
-buffer_packet/buffer_packet.hpp:27:34: note: Function 'update_buffer' argument 1 names different: declaration 'packet' definition 'scheduled_packet'.
-    void update_buffer(packet_t& packet);
-                                 ^
-buffer_packet/buffer_packet.cpp:3:44: note: Function 'update_buffer' argument 1 names different: declaration 'packet' definition 'scheduled_packet'.
-void BufferPacket::update_buffer(packet_t& scheduled_packet)
-                                           ^
-system_model/physical_channel/physical_channel.hpp:28:14: style:inconclusive: Technically the member function 'PHYChannel::fill_channel_condition' can be const. [functionConst]
-        void fill_channel_condition(std::vector<Distribution>& distributions)
-             ^
-system_model/system_model.hpp:23:90: performance: Function parameter 'tx_power_levels' should be passed by const reference. [passedByValue]
-    channel_t(unsigned int frequency, unsigned int num_frames, std::vector<unsigned int> tx_power_levels):
-                                                                                         ^
+buffer_packet/buffer_packet.hpp:19:91: error: Member variable 'system_tick' is initialized by itself. [selfInitialization]
+        buffer_packet(std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0})),
+                                                                                          ^
+system_model/physical_channel/physical_channel.hpp:27:16: style:inconclusive: Technically the member function 'PHYChannel::fill_channel_condition' can be const. [functionConst]
+    const void fill_channel_condition(std::vector<Distribution>& distributions)
+               ^
 system_model/system_model.hpp:49:23: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
             channels->push_back(channel_t(frequency, num_frames, tx_power_levels));
                       ^
-packet_generators/fixed_rate/fixed_rate.cpp:5:118: performance: Function parameter 'packets' should be passed by const reference. [passedByValue]
-FixedRate_PacketGen::FixedRate_PacketGen(std::shared_ptr<unsigned int> system_tick, std::vector<fixed_rate_packet_t> packets, std::shared_ptr<std::vector<packet_t>> buffer_packet):
-                                                                                                                     ^
-system_model/receiver/receiver.cpp:15:10: style: The scope of the variable 'prob_result' can be reduced. [variableScope]
-    bool prob_result; /* The result of the bernoulli prob function */
-         ^
 buffer_packet/buffer_packet.cpp:45:0: style: The function 'get_name' is never used. [unusedFunction]
 
 ^
