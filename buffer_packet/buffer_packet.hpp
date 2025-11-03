@@ -19,7 +19,7 @@ public:
         system_tick(system_tick)
     {
         /* Initialize buffer_packet with IDLE PACKET */
-        buffer_packet = std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0});
+        buffer_packet = std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0});
     }
 
     virtual ~BufferPacket() = default;
