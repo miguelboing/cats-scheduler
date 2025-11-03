@@ -7,7 +7,7 @@ FixedRate_PacketGen::FixedRate_PacketGen(std::shared_ptr<unsigned int> system_ti
 
 void FixedRate_PacketGen::generate_packets(void)
 {
-    for (auto& packet : packets)
+    for (auto& packet : this->packets)
     {
         /* Check if any new packet has arrived */
         if (packet.phase + (packet.fixed_rate * packet.count) <= *this->system_tick)
@@ -15,9 +15,8 @@ void FixedRate_PacketGen::generate_packets(void)
             /* Set a deadline */
             packet.original_packet.deadline = packet.phase + (packet.relative_deadline * ++packet.count);
 
-            /* Spawn a packet to the buffer */
-            this->buffer_packet->push_back(packet.original_packet);
-        }
+            this->add_packet_to_buffer(packet.original_packet);
+         }
     }
 }
 
