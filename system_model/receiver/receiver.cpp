@@ -12,7 +12,6 @@ receiver_result_t Receiver::recv_packets(system_model_t system_model, schedule_r
     receiver_result_t receiver_result;
     frame_allocation_t cur_frame;
     double frame_prob;
-    bool prob_result; /* The result of the bernoulli prob function */
 
     /* Use the channel_condition to emulate packet loss */
     for (unsigned int i = 0U; i < system_model.number_of_frames; ++i)
@@ -37,7 +36,7 @@ receiver_result_t Receiver::recv_packets(system_model_t system_model, schedule_r
         }
 
         distribution = std::bernoulli_distribution(frame_prob);
-        prob_result = (distribution(this->generator));
+        bool prob_result = distribution(this->generator);
 
 
         receiver_result.lost_frames.push_back(prob_result);
