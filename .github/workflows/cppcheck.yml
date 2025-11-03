@@ -1,0 +1,30 @@
+name: cppcheck-action-test
+on:
+  # Runs on 'push' events to specified branches. Output will be printed to the console.
+  push:
+    branches:
+      - dev
+      - main
+
+  # Uses 'pull_request_target' to allow analysis of forked repositories.
+  # Output will be shown in PR comments (unless 'force_console_print' is used).
+  pull_request_target:
+    branches:
+      - "*"
+
+jobs:
+  build:
+    name: cppcheck-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: cppcheck
+        uses: deep5050/cppcheck-action@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN}}
+      - name: publish report
+        uses: mikeal/publish-to-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: 'main' # your branch name goes here
