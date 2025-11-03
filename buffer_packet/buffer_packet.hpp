@@ -11,16 +11,13 @@
 class BufferPacket
 {
 public:
-    std::shared_ptr<unsigned int> system_tick;
-
     std::shared_ptr<std::vector<packet_t>> buffer_packet;
 
+    std::shared_ptr<unsigned int> system_tick;
+
     BufferPacket(std::shared_ptr<unsigned int> system_tick):
-        system_tick(system_tick)
-    {
-        /* Initialize buffer_packet with IDLE PACKET */
-        buffer_packet = std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0});
-    }
+        buffer_packet(std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0})),
+        system_tick(system_tick) {};
 
     virtual ~BufferPacket() = default;
 
