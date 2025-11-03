@@ -1,5 +1,4 @@
 #pragma once
-
 #include <vector>
 #include <memory>
 #include <random>
@@ -25,7 +24,7 @@ public:
 private:
     std::default_random_engine generator;
     template<typename Distribution>
-        void fill_channel_condition(std::vector<Distribution>& distributions)
+    const void fill_channel_condition(std::vector<Distribution>& distributions)
     {
         /* Iterate through each channel */
         for (size_t ch_idx = 0; ch_idx < system_model.channels->size(); ++ch_idx)
