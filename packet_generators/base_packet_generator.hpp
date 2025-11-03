@@ -4,6 +4,7 @@
 #include <memory>
 #include <iostream>
 #include <algorithm>
+#include <unordered_map>
 
 #include "system_model/system_model.hpp"
 
@@ -23,4 +24,18 @@ public:
     virtual void generate_packets(void) = 0;
 
     virtual std::string get_name() const = 0;
+
+protected:
+    void add_packet_to_buffer(packet_t& packet);
+    std::unordered_map<unsigned int, unsigned int> packet_count_map; /* Maps ID-> count */
 };
+
+inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
+{
+    /* Set packet count, auto-initializes to 0 if new ID */
+    packet.count = this->packet_count_map[packet.id]++;
+
+    /* Spawn a packet to the buffer */
+    this->buffer_packet->push_back(packet);
+};
+
