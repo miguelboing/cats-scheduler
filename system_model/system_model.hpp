@@ -20,7 +20,7 @@ struct channel_t
     std::shared_ptr<std::vector<std::vector<double>>> channel_condition; /* This is a 2D array frame x power */
     size_t num_power_levels;
 
-    channel_t(unsigned int frequency, unsigned int num_frames, std::vector<unsigned int> tx_power_levels):
+    channel_t(unsigned int frequency, unsigned int num_frames, const std::vector<unsigned int>& tx_power_levels):
         frequency(frequency), tx_power_levels(tx_power_levels),
         num_power_levels(tx_power_levels.size())
     {
