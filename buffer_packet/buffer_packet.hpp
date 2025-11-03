@@ -15,14 +15,14 @@ public:
 
     std::shared_ptr<unsigned int> system_tick;
 
-    BufferPacket(std::shared_ptr<unsigned int> system_tick):
+    explicit BufferPacket(std::shared_ptr<unsigned int> system_tick):
         buffer_packet(std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0})),
         system_tick(system_tick) {};
 
     virtual ~BufferPacket() = default;
 
-    void update_buffer(packet_t& packet);
+    void update_buffer(packet_t& scheduled_packet);
 
-    std::string get_name();
+    static std::string get_name();
 };
 
