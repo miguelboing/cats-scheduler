@@ -24,8 +24,7 @@ public:
 private:
     std::default_random_engine generator;
     template<typename Distribution>
-    // cppcheck-suppress functionConst
-    void fill_channel_condition(std::vector<Distribution>& distributions)
+    void fill_channel_condition(std::vector<Distribution>& distributions) // cppcheck-suppress functionConst
     {
         /* Iterate through each channel */
         for (size_t ch_idx = 0; ch_idx < system_model.channels->size(); ++ch_idx)
