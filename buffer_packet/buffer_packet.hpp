@@ -15,9 +15,9 @@ public:
 
     std::shared_ptr<unsigned int> system_tick;
 
-    explicit BufferPacket(std::shared_ptr<unsigned int> system_tick):
+    explicit BufferPacket(std::shared_ptr<unsigned int> sys_tick):
         buffer_packet(std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0})),
-        system_tick(system_tick) {};
+        system_tick(sys_tick) {};
 
     virtual ~BufferPacket() = default;
 
