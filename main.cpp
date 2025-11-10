@@ -6,6 +6,7 @@
 #include "buffer_packet/buffer_packet.hpp"
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
+#include "transmitter/transmitter.hpp"
 #include "system_model/physical_channel/physical_channel.hpp"
 #include "system_model/receiver/receiver.hpp"
 
@@ -17,10 +18,18 @@ int main()
     BufferPacket buffer(system_tick);
     std::vector<fixed_rate_packet_t> fixed_rate_packets;
 
-    fixed_rate_packets.push_back(fixed_rate_packet_t(1U, 2U, 90U, 1U, 5U, 0U));
-    fixed_rate_packets.push_back(fixed_rate_packet_t(1U, 1U, 70U, 2U, 4U, 0U));
+    fixed_rate_packets.push_back(fixed_rate_packet_t(5U, 2U, 90U, 1U, 5U, 0U));
+    fixed_rate_packets.push_back(fixed_rate_packet_t(4U, 1U, 70U, 2U, 4U, 0U));
 
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet);
+
+    /* Initialize scheduler */
+    EDF_scheduler scheduler(10, 14074000, buffer.buffer_packet);
+    scheduled_packet_t scheduled_packet;
+
+    /* Initialize the transmitter */
+    Transmitter transmitter(buffer.buffer_packet);
+    transmitted_packet_t transmitted_packet;
 
     for (unsigned int i = 0U; i < 20U; i++)
     {
@@ -28,16 +37,32 @@ int main()
 
         std::cout << "Frame " << *system_tick << " - Buffer contents: " << std::endl;
         for (const auto& packet : *buffer.buffer_packet) {
-            std::cout << "(id: " << packet.id
-                      << ", deadline: " << packet.deadline
-                      << ", comp_cost: " << packet.comp_cost
+            std::cout << "(id: "            << packet.id
+                      << ", id_count: "     << packet.id_count
+                      << ", deadline: "     << packet.deadline
+                      << ", frames: "       << packet.frames
                       << ", success_rate: " << packet.success_rate_req << ") ";
-
             std::cout << std::endl;
         }
 
-        (*system_tick)++;
         std::cout << std::endl;
+
+        scheduled_packet = scheduler.schedule_packet();
+
+        transmitted_packet = transmitter.transmit_frame(scheduled_packet);
+
+         std::cout    << "Transmitted packet: "
+                      << "(id: "                << transmitted_packet.packet.id
+                      << ", id_count: "         << transmitted_packet.packet.id_count
+                      << ", deadline: "         << transmitted_packet.packet.deadline
+                      << ", frames: "           << transmitted_packet.packet.frames
+                      << ", frame_count: "      << transmitted_packet.packet.frame_count
+                      << ", success_rate: "     << transmitted_packet.packet.success_rate_req << ") ";
+        std::cout << std::endl << std::endl;
+
+        buffer.check_deadlines();
+        (*system_tick)++;
+
     }
 }
 //    EDF_scheduler edf_sch(10, 14074); /* Transmit everything with 10W and at 14.074 MHz*/
