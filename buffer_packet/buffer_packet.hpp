@@ -11,17 +11,15 @@
 class BufferPacket
 {
 public:
+    explicit BufferPacket(std::shared_ptr<unsigned int> sys_tick);
+
     std::shared_ptr<std::vector<packet_t>> buffer_packet;
 
     std::shared_ptr<unsigned int> system_tick;
 
-    explicit BufferPacket(std::shared_ptr<unsigned int> sys_tick):
-        buffer_packet(std::make_shared<std::vector<packet_t>>(1, packet_t{0, 0, 0, 0, 0})),
-        system_tick(sys_tick) {};
-
     virtual ~BufferPacket() = default;
 
-    void update_buffer(packet_t& scheduled_packet);
+    void check_deadlines(void);
 
     static std::string get_name();
 };
