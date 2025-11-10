@@ -7,9 +7,10 @@
 typedef struct
 {
     unsigned int id;                /* ID: Tasks unique identifier */
-    unsigned int count;             /* PC: Identifier between packets with the same ID */
+    unsigned int id_count;          /* PC: Identifier between packets with the same ID */
     unsigned int deadline;          /* D : This is the relative deadline */
-    unsigned int comp_cost;         /* C : A unit consumes one frame */
+    unsigned int frames;            /* C : A unit consumes one frame */
+    unsigned int frame_count;
     unsigned int success_rate_req;  /* S : Success rate requirement for the packet */
 } packet_t;
 
@@ -50,6 +51,22 @@ struct system_model_t
         }
     }
 };
+
+typedef struct
+{
+    packet_t* packet;
+    unsigned int transmission_power;
+    unsigned int frequency;
+}
+scheduled_packet_t;
+
+typedef struct
+{
+    packet_t packet;
+    unsigned int transmission_power;
+    unsigned int frequency;
+}
+transmitted_packet_t;
 
 typedef struct {
     unsigned int packet_id;        /* Packet ID per frame */
