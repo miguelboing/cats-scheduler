@@ -33,7 +33,8 @@ protected:
 inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
 {
     /* Set packet count, auto-initializes to 0 if new ID */
-    packet.count = this->packet_count_map[packet.id]++;
+    packet.id_count = this->packet_count_map[packet.id]++;
+    packet.frame_count = 0U;
 
     /* Spawn a packet to the buffer */
     this->buffer_packet->push_back(packet);
