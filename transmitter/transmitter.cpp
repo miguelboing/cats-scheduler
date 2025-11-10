@@ -5,6 +5,9 @@
 
 #include "transmitter.hpp"
 
+Transmitter::Transmitter(std::shared_ptr<std::vector<packet_t>> buffer_packet):
+    buffer_packet(buffer_packet) {};
+
 transmitted_packet_t Transmitter::transmit_frame(scheduled_packet_t scheduled_packet)
 {
     transmitted_packet_t transmitted_packet;
