@@ -2,13 +2,15 @@
 #include <vector>
 #include <memory>
 
+/* System Model */
 #include "system_model/system_model.hpp"
-#include "buffer_packet/buffer_packet.hpp"
+#include "system_model/buffer_packet/buffer_packet.hpp"
+#include "system_model/receiver/receiver.hpp"
+#include "system_model/transmitter/transmitter.hpp"
+
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
-#include "transmitter/transmitter.hpp"
-#include "system_model/physical_channel/physical_channel.hpp"
-#include "system_model/receiver/receiver.hpp"
+#include "physical_channel/physical_channel.hpp"
 
 int main()
 {
