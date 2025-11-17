@@ -6,7 +6,7 @@
 class Receiver
 {
 public:
-    receiver_result_t recv_packets(system_model_t system_model, schedule_result_t schedule_result);
+    bool recv_packet(received_packet_t recv_packet);
 private:
     std::default_random_engine generator;
 };
