@@ -5,12 +5,11 @@
 /* System Model */
 #include "system_model/system_model.hpp"
 #include "system_model/buffer_packet/buffer_packet.hpp"
-#include "system_model/receiver/receiver.hpp"
 #include "system_model/transmitter/transmitter.hpp"
 
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
-#include "physical_channel/physical_channel.hpp"
+#include "physical_channels/sigmoid_channel/sigmoid_channel.hpp"
 
 int main()
 {
@@ -26,12 +25,20 @@ int main()
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet);
 
     /* Initialize scheduler */
-    EDF_scheduler scheduler(10, 14074000, buffer.buffer_packet);
+    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet);
     scheduled_packet_t scheduled_packet;
 
     /* Initialize the transmitter */
     Transmitter transmitter(buffer.buffer_packet);
     transmitted_packet_t transmitted_packet;
+
+    /* Initialize the physical channels */
+    std::vector<SigmoidChannel> channels;
+    channels.emplace_back(14074000);  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
+
+    /* Initialize the receiver */
+    //Receiver receiver();
+    received_packet_t recv_packet;
 
     for (unsigned int i = 0U; i < 20U; i++)
     {
@@ -62,72 +69,21 @@ int main()
                       << ", success_rate: "     << transmitted_packet.packet.success_rate_req << ") ";
         std::cout << std::endl << std::endl;
 
+        for (auto &channel: channels)
+        {
+            if (channel.frequency == transmitted_packet.frequency)
+            {
+                recv_packet = channel.gen_frame_with_probability(transmitted_packet);
+                std::cout << "Found channel!" << std::endl;
+            }
+        }
+        std::cout    << "Probability for the packet: " << recv_packet.success_prob
+                     << ", tx_power: "                 << recv_packet.transmission_power
+                     << ", freq_prob_success: "        << recv_packet.packet.success_rate_req << ") ";
+        std::cout << std::endl << std::endl;
+
         buffer.check_deadlines();
         (*system_tick)++;
-
     }
 }
-//    EDF_scheduler edf_sch(10, 14074); /* Transmit everything with 10W and at 14.074 MHz*/
-//
-//    Receiver receiver;
-//
-//    std::vector<unsigned int> power_levels = {1, 10, 25};
-//    std::vector<unsigned int> frequencies = {14074, 18100, 7074, 10136};
-//
-//    system_model_t system_model(20, frequencies, power_levels); /* 20 frames, 3 channels */
-//
-//    PHYChannel phy_channel(system_model, NORMAL);
-//
-//    std::vector<packet_t> packets =
-//    {
-//     {1, 5, 2, 90},  /* packet_id=1, deadline=5, comp_cost=2, success_rate=90 */2yy
-//     {2, 4, 1, 85},  /* packet_id=2, deadline=4, comp_cost=1, success_rate=85 */
-//    };
-//
-//    auto packet_queue = std::make_shared<std::vector<packet_t>>(packets);
-//
-//    edf_sch.add_queue(packet_queue);
-//
-//    schedule_result_t result = edf_sch.schedule_packets(system_model);
-//
-//    std::cout << "Frame allocation: [";
-//    bool first = true;
-//    for (const auto& frame : result.frame_allocation) {
-//        if (!first) std::cout << ", ";
-//        std::cout << "(" << frame.packet_id << ", " << frame.packet_count << ", " << frame.packet_frame_id << ", " << frame.tx_power << ")";
-//        first = false;
-//    }
-//    std::cout << "]" << std::endl;
-//
-//    std::cout << "Channel probabilities: [";
-//    for (size_t ch = 0; ch < system_model.channels->size(); ++ch) {
-//        std::cout << "Channel " << ch << " (freq: "
-//                  << (*system_model.channels)[ch].frequency << "):" << std::endl;
-//
-//        auto& channel = (*system_model.channels)[ch];
-//        for (size_t pwr = 0; pwr < channel.tx_power_levels.size(); ++pwr) {
-//            std::cout << "  Power level " << pwr << ": [";
-//            bool first = true;
-//            for (unsigned int frame = 0; frame < system_model.number_of_frames; ++frame) {
-//                if (!first) std::cout << ", ";
-//                std::cout << (*channel.channel_condition)[pwr][frame];
-//                first = false;
-//            }
-//            std::cout << "]" << std::endl;
-//        }
-//    }
-//
-//    receiver_result_t receiver_result = receiver.recv_packets(system_model, result);
-//
-//    std::cout << "Received Frames: [";
-//    first = true;
-//    for (const auto& frame: receiver_result.received_frames) {
-//        if (!first) std::cout << ", ";
-//        std::cout << frame;
-//        first = false;
-//    }
-//    std::cout << "]" << std::endl;
-//
-//    return 0;
-//}
-//
+
