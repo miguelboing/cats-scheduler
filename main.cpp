@@ -82,16 +82,16 @@ int main()
             std::cout    << "Probability for the packet: " << recv_packet.success_prob
                          << ", tx_power: "                 << recv_packet.transmission_power
                          << ", freq_prob_success: "        << recv_packet.packet.success_rate_req << ") ";
-            std::cout << std::endl << std::endl;
+            std::cout << std::endl;
+
+            std::cout << "Packet successfully decoded: "
+                      << receiver.recv_packet(recv_packet)
+                      << std::endl << std::endl;
         }
         else
         {
-            std::cout << "No matching channel found" << std::endl;
+            std::cout << "ERROR: No matching channel found" << std::endl;
         }
-
-        std::cout << "Packet successfully decoded: "
-                  << receiver.recv_packet(recv_packet)
-                  << std::endl;
 
         buffer.check_deadlines();
         (*system_tick)++;
