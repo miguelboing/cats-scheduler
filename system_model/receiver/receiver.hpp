@@ -6,7 +6,7 @@
 class Receiver
 {
 public:
-    bool recv_packet(received_packet_t recv_packet);
+    bool recv_frame(received_frame_t recv_frame);
 private:
     std::default_random_engine generator;
 };

@@ -27,11 +27,11 @@ int main()
 
     /* Initialize scheduler */
     EDF_scheduler scheduler(7, 14074000, buffer.buffer_packet);
-    scheduled_packet_t scheduled_packet;
+    scheduled_frame_t scheduled_frame;
 
     /* Initialize the transmitter */
     Transmitter transmitter(buffer.buffer_packet);
-    transmitted_packet_t transmitted_packet;
+    transmitted_frame_t transmitted_frame;
 
     /* Initialize the physical channels */
     std::vector<SigmoidChannel> channels;
@@ -39,7 +39,7 @@ int main()
 
     /* Initialize the receiver */
     Receiver receiver;
-    received_packet_t recv_packet;
+    received_frame_t recv_frame;
 
     for (unsigned int i = 0U; i < 20U; i++)
     {
@@ -57,35 +57,35 @@ int main()
 
         std::cout << std::endl;
 
-        scheduled_packet = scheduler.schedule_packet();
+        scheduled_frame = scheduler.schedule_frame();
 
-        transmitted_packet = transmitter.transmit_frame(scheduled_packet);
+        transmitted_frame = transmitter.transmit_frame(scheduled_frame);
 
         std::cout    << "Transmitted packet: "
-                     << "(id: "                << transmitted_packet.packet.id
-                     << ", id_count: "         << transmitted_packet.packet.id_count
-                     << ", deadline: "         << transmitted_packet.packet.deadline
-                     << ", frames: "           << transmitted_packet.packet.frames
-                     << ", frame_count: "      << transmitted_packet.packet.frame_count
-                     << ", success_rate: "     << transmitted_packet.packet.success_rate_req << ") ";
+                     << "(id: "                << transmitted_frame.packet.id
+                     << ", id_count: "         << transmitted_frame.packet.id_count
+                     << ", deadline: "         << transmitted_frame.packet.deadline
+                     << ", frames: "           << transmitted_frame.packet.frames
+                     << ", frame_count: "      << transmitted_frame.packet.frame_count
+                     << ", success_rate: "     << transmitted_frame.packet.success_rate_req << ") ";
         std::cout    << std::endl << std::endl;
 
         /* Find the channel for the packet */
         auto it = std::find_if(channels.begin(), channels.end(),
-                                [&transmitted_packet](const SigmoidChannel& ch) {
-                                    return ch.frequency == transmitted_packet.frequency;
+                                [&transmitted_frame](const SigmoidChannel& ch) {
+                                    return ch.frequency == transmitted_frame.frequency;
                                 });
 
         if (it != channels.end())
         {
-            recv_packet = it->gen_frame_with_probability(transmitted_packet);
-            std::cout    << "Probability for the packet: " << recv_packet.success_prob
-                         << ", tx_power: "                 << recv_packet.transmission_power
-                         << ", freq_prob_success: "        << recv_packet.packet.success_rate_req << ") ";
+            recv_frame = it->gen_frame_with_probability(transmitted_frame);
+            std::cout    << "Probability for the frame: " << recv_frame.success_prob
+                         << ", tx_power: "                 << recv_frame.transmission_power
+                         << ", freq_prob_success: "        << recv_frame.packet.success_rate_req << ") ";
             std::cout << std::endl;
 
-            std::cout << "Packet successfully decoded: "
-                      << receiver.recv_packet(recv_packet)
+            std::cout << "Frame successfully decoded: "
+                      << receiver.recv_frame(recv_frame)
                       << std::endl << std::endl;
         }
         else

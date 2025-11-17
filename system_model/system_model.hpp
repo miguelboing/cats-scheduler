@@ -42,7 +42,7 @@ typedef struct
     unsigned int transmission_power;
     unsigned int frequency;
 }
-scheduled_packet_t;
+scheduled_frame_t;
 
 typedef struct
 {
@@ -50,7 +50,7 @@ typedef struct
     unsigned int transmission_power;
     unsigned int frequency;
 }
-transmitted_packet_t;
+transmitted_frame_t;
 
 typedef struct
 {
@@ -59,5 +59,5 @@ typedef struct
     unsigned int frequency;
     double success_prob;
 }
-received_packet_t;
+received_frame_t;
 

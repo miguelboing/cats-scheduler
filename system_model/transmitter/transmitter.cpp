@@ -8,30 +8,30 @@
 Transmitter::Transmitter(std::shared_ptr<std::vector<packet_t>> buffer_packet):
     buffer_packet(buffer_packet) {};
 
-transmitted_packet_t Transmitter::transmit_frame(scheduled_packet_t scheduled_packet)
+transmitted_frame_t Transmitter::transmit_frame(scheduled_frame_t scheduled_frame)
 {
-    transmitted_packet_t transmitted_packet;
-    transmitted_packet.transmission_power = scheduled_packet.transmission_power;
-    transmitted_packet.frequency = scheduled_packet.frequency;
+    transmitted_frame_t transmitted_frame;
+    transmitted_frame.transmission_power = scheduled_frame.transmission_power;
+    transmitted_frame.frequency = scheduled_frame.frequency;
 
-    if (scheduled_packet.packet == nullptr)
+    if (scheduled_frame.packet == nullptr)
     {
-        transmitted_packet.packet = {0, 0, 0, 0, 0, 0};
+        transmitted_frame.packet = {0, 0, 0, 0, 0, 0};
 
-        return transmitted_packet;
+        return transmitted_frame;
     }
 
-    transmitted_packet.packet = *(scheduled_packet.packet);
+    transmitted_frame.packet = *(scheduled_frame.packet);
 
     /* Find packet on the buffer */
     auto packet_it = std::find_if(this->buffer_packet->begin(), this->buffer_packet->end(),
-        [&scheduled_packet](const packet_t& p) { return &p == scheduled_packet.packet;});
+        [&scheduled_frame](const packet_t& p) { return &p == scheduled_frame.packet;});
 
     if (packet_it != this->buffer_packet->end())
     {
-        if (scheduled_packet.packet->frames > scheduled_packet.packet->frame_count) /* Check if this packet is valid */
+        if (scheduled_frame.packet->frames > scheduled_frame.packet->frame_count) /* Check if this packet is valid */
         {
-            scheduled_packet.packet->frame_count++;
+            scheduled_frame.packet->frame_count++;
         }
     }
     else
@@ -39,6 +39,6 @@ transmitted_packet_t Transmitter::transmit_frame(scheduled_packet_t scheduled_pa
         std::cout << "ERROR: Couldn't find the packet" << std::endl;
     }
 
-    return transmitted_packet;
+    return transmitted_frame;
 }
 

@@ -12,7 +12,7 @@ public:
     explicit BasePhysicalChannel(unsigned int frequency):
         frequency(frequency) {};
 
-    virtual received_packet_t gen_frame_with_probability(transmitted_packet_t transmitted_packet) = 0;
+    virtual received_frame_t gen_frame_with_probability(transmitted_frame_t transmitted_frame) = 0;
 
     unsigned int frequency;
 };

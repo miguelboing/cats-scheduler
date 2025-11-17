@@ -16,15 +16,15 @@ SigmoidChannel::SigmoidChannel(unsigned int frequency, double ref_power_w, doubl
     this->snr_50_db = ref_snr_db + (1.0/slope) * log((1.0 - ref_psr)/ref_psr);
 }
 
-received_packet_t SigmoidChannel::gen_frame_with_probability(transmitted_packet_t transmitted_packet)
+received_frame_t SigmoidChannel::gen_frame_with_probability(transmitted_frame_t transmitted_frame)
 {
-    received_packet_t recv_packet;
-    recv_packet.packet = transmitted_packet.packet;
-    recv_packet.transmission_power = transmitted_packet.transmission_power;
-    recv_packet.frequency = transmitted_packet.frequency;
+    received_frame_t recv_frame;
+    recv_frame.packet = transmitted_frame.packet;
+    recv_frame.transmission_power = transmitted_frame.transmission_power;
+    recv_frame.frequency = transmitted_frame.frequency;
 
     /* Convert power W to dbmW */
-    double tx_power_dbm = 10 * log10(recv_packet.transmission_power * 1000);
+    double tx_power_dbm = 10 * log10(recv_frame.transmission_power * 1000);
 
     /* Power after pathloss */
     double rx_power_dbm = tx_power_dbm - this->pathloss_db;
@@ -33,8 +33,8 @@ received_packet_t SigmoidChannel::gen_frame_with_probability(transmitted_packet_
     double snr_db = rx_power_dbm - this->noise_floor_dbm;
 
     /* Calculating the probability on the sigmoid slope */
-    recv_packet.success_prob = 1.0 / (1.0 + exp(-slope * (snr_db - snr_50_db)));
+    recv_frame.success_prob = 1.0 / (1.0 + exp(-slope * (snr_db - snr_50_db)));
 
-    return recv_packet;
+    return recv_frame;
 }
 
