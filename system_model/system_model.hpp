@@ -30,27 +30,11 @@ struct channel_t
     }
 };
 
-struct system_model_t
+typedef struct
 {
     unsigned int number_of_frames;                     /* This is the total number of frames available to transmit */
-
-    std::vector<unsigned int> tx_power_levels;         /* Possible TX Values for this system model */
-
-    std::vector<unsigned int> frequencies;             /* Possible TX Values for this system model */
-
-    std::shared_ptr<std::vector<channel_t>> channels;  /* Vector with the different channels available for transmission */
-
-    system_model_t(unsigned int num_frames, std::vector<unsigned int> frequencies, std::vector<unsigned int> tx_power_levels)
-        : number_of_frames(num_frames), tx_power_levels(tx_power_levels),
-          frequencies(frequencies),
-          channels(std::make_shared<std::vector<channel_t>>())  /* 0 channels initially */
-    {
-        for (auto const& frequency: frequencies)
-        {
-            channels->push_back(channel_t(frequency, num_frames, tx_power_levels));
-        }
-    }
-};
+    std::vector<unsigned int> frequencies;             /* List of frequencies available for transmission */
+} system_model_t;
 
 typedef struct
 {
@@ -68,22 +52,12 @@ typedef struct
 }
 transmitted_packet_t;
 
-typedef struct {
-    unsigned int packet_id;        /* Packet ID per frame */
-    unsigned int packet_frame_id;  /* The frame count for each packet */
-    unsigned int packet_count;     /* This is the counter of how many packets have been sent using this packet_id disregarding packet_frame_id */
-    unsigned int tx_power;
+typedef struct
+{
+    packet_t packet;
+    unsigned int transmission_power;
     unsigned int frequency;
-} frame_allocation_t;
-
-typedef struct {
-    std::vector<frame_allocation_t> frame_allocation;
-    bool is_feasible;                                  /* whether all deadlines met */
-    std::vector<packet_t> missed_deadlines;            /* tasks that missed deadlines */
-} schedule_result_t;
-
-typedef struct {
-    std::vector<char> received_frames;
-    std::vector<bool> lost_frames;
-} receiver_result_t;
+    double success_prob;
+}
+received_packet_t;
 
