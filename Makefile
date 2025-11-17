@@ -10,8 +10,8 @@ TARGET = main
 .PHONY: all
 all: $(TARGET)
 
-$(TARGET): $(TARGET).cpp buffer_packet fixed_rate edf_scheduler transmitter sigmoid_channel
-	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o sigmoid_channel.o edf_scheduler.o transmitter.o -o $(TARGET).o
+$(TARGET): $(TARGET).cpp buffer_packet fixed_rate edf_scheduler transmitter sigmoid_channel receiver
+	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o sigmoid_channel.o edf_scheduler.o transmitter.o receiver.o -o $(TARGET).o
 
 .PHONY: fixed_rate
 fixed_rate: packet_generators/fixed_rate/Makefile

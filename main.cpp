@@ -6,6 +6,7 @@
 #include "system_model/system_model.hpp"
 #include "system_model/buffer_packet/buffer_packet.hpp"
 #include "system_model/transmitter/transmitter.hpp"
+#include "system_model/receiver/receiver.hpp"
 
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
@@ -25,7 +26,7 @@ int main()
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet);
 
     /* Initialize scheduler */
-    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet);
+    EDF_scheduler scheduler(7, 14074000, buffer.buffer_packet);
     scheduled_packet_t scheduled_packet;
 
     /* Initialize the transmitter */
@@ -37,7 +38,7 @@ int main()
     channels.emplace_back(14074000);  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
 
     /* Initialize the receiver */
-    //Receiver receiver();
+    Receiver receiver;
     received_packet_t recv_packet;
 
     for (unsigned int i = 0U; i < 20U; i++)
@@ -60,27 +61,37 @@ int main()
 
         transmitted_packet = transmitter.transmit_frame(scheduled_packet);
 
-         std::cout    << "Transmitted packet: "
-                      << "(id: "                << transmitted_packet.packet.id
-                      << ", id_count: "         << transmitted_packet.packet.id_count
-                      << ", deadline: "         << transmitted_packet.packet.deadline
-                      << ", frames: "           << transmitted_packet.packet.frames
-                      << ", frame_count: "      << transmitted_packet.packet.frame_count
-                      << ", success_rate: "     << transmitted_packet.packet.success_rate_req << ") ";
-        std::cout << std::endl << std::endl;
+        std::cout    << "Transmitted packet: "
+                     << "(id: "                << transmitted_packet.packet.id
+                     << ", id_count: "         << transmitted_packet.packet.id_count
+                     << ", deadline: "         << transmitted_packet.packet.deadline
+                     << ", frames: "           << transmitted_packet.packet.frames
+                     << ", frame_count: "      << transmitted_packet.packet.frame_count
+                     << ", success_rate: "     << transmitted_packet.packet.success_rate_req << ") ";
+        std::cout    << std::endl << std::endl;
 
-        for (auto &channel: channels)
+        /* Find the channel for the packet */
+        auto it = std::find_if(channels.begin(), channels.end(),
+                                [&transmitted_packet](const SigmoidChannel& ch) {
+                                    return ch.frequency == transmitted_packet.frequency;
+                                });
+
+        if (it != channels.end())
         {
-            if (channel.frequency == transmitted_packet.frequency)
-            {
-                recv_packet = channel.gen_frame_with_probability(transmitted_packet);
-                std::cout << "Found channel!" << std::endl;
-            }
+            recv_packet = it->gen_frame_with_probability(transmitted_packet);
+            std::cout    << "Probability for the packet: " << recv_packet.success_prob
+                         << ", tx_power: "                 << recv_packet.transmission_power
+                         << ", freq_prob_success: "        << recv_packet.packet.success_rate_req << ") ";
+            std::cout << std::endl << std::endl;
         }
-        std::cout    << "Probability for the packet: " << recv_packet.success_prob
-                     << ", tx_power: "                 << recv_packet.transmission_power
-                     << ", freq_prob_success: "        << recv_packet.packet.success_rate_req << ") ";
-        std::cout << std::endl << std::endl;
+        else
+        {
+            std::cout << "No matching channel found" << std::endl;
+        }
+
+        std::cout << "Packet successfully decoded: "
+                  << receiver.recv_packet(recv_packet)
+                  << std::endl;
 
         buffer.check_deadlines();
         (*system_tick)++;
