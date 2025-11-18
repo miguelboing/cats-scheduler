@@ -1,5 +1,5 @@
 CPP = g++
-CFLAGS =-Wall -I$(CURDIR)
+CFLAGS =-Wall -I$(CURDIR) -I$(CURDIR)/libs
 
 ifndef $(BUILD_DIR)
 	BUILD_DIR=$(CURDIR)
@@ -11,7 +11,7 @@ TARGET = main
 all: $(TARGET)
 
 $(TARGET): $(TARGET).cpp buffer_packet fixed_rate edf_scheduler transmitter sigmoid_channel receiver
-	$(CPP) $(CFLAGS) $(TARGET).cpp -I./libs/json buffer_packet.o fixed_rate.o sigmoid_channel.o edf_scheduler.o transmitter.o receiver.o -o $(TARGET).o
+	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o sigmoid_channel.o edf_scheduler.o transmitter.o receiver.o -o $(TARGET).o
 
 .PHONY: fixed_rate
 fixed_rate: packet_generators/fixed_rate/Makefile
