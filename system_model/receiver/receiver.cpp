@@ -1,10 +1,21 @@
-#include <random>
-#include <vector>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <random>
+#include <vector>
+#include <memory>
+
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 #include "system_model/system_model.hpp"
 #include "receiver.hpp"
+
+Receiver::Receiver(std::shared_ptr<unsigned int> sys_tick):
+    system_tick(sys_tick)
+{
+    frame_log = json::array();
+}
 
 bool Receiver::recv_frame(received_frame_t recv_frame)
 {
@@ -13,6 +24,28 @@ bool Receiver::recv_frame(received_frame_t recv_frame)
     distribution = std::bernoulli_distribution(recv_frame.success_prob);
     bool prob_result = distribution(this->generator);
 
+    json frame_entry = {
+        {"system_tick", *(this->system_tick)},
+        {"packet_id", recv_frame.packet.id},
+        {"packet_id_count", recv_frame.packet.id_count},
+        {"deadline", recv_frame.packet.deadline},
+        {"frames", recv_frame.packet.frames},
+        {"frame_count", recv_frame.packet.frame_count},
+        {"success_rate_req", recv_frame.packet.success_rate_req},
+        {"transmission_power", recv_frame.transmission_power},
+        {"frequency", recv_frame.frequency},
+        {"success_prob", recv_frame.success_prob},
+        {"received", prob_result}
+    };
+
+    frame_log.push_back(frame_entry);
+
     return prob_result;
+}
+
+void Receiver::save_to_file(const std::string& filename)
+{
+    std::ofstream file(filename);
+    file << frame_log.dump(4);
 }
 
