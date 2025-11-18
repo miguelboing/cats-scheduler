@@ -26,7 +26,7 @@ int main()
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet);
 
     /* Initialize scheduler */
-    EDF_scheduler scheduler(7, 14074000, buffer.buffer_packet);
+    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet);
     scheduled_frame_t scheduled_frame;
 
     /* Initialize the transmitter */
@@ -38,7 +38,7 @@ int main()
     channels.emplace_back(14074000);  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
 
     /* Initialize the receiver */
-    Receiver receiver;
+    Receiver receiver(system_tick);
     received_frame_t recv_frame;
 
     for (unsigned int i = 0U; i < 20U; i++)
@@ -96,5 +96,7 @@ int main()
         buffer.check_deadlines();
         (*system_tick)++;
     }
+
+    receiver.save_to_file("receiver_results.json");
 }
 
