@@ -12,10 +12,7 @@ using json = nlohmann::json;
 #include "receiver.hpp"
 
 Receiver::Receiver(std::shared_ptr<unsigned int> sys_tick):
-    system_tick(sys_tick)
-{
-    frame_log = json::array();
-}
+    system_tick(sys_tick), frame_log(json::array()) {}
 
 bool Receiver::recv_frame(received_frame_t recv_frame)
 {
