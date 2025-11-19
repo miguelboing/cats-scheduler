@@ -10,8 +10,8 @@ typedef struct
     unsigned int id_count;          /* PC: Identifier between packets with the same ID */
     unsigned int deadline;          /* D : This is the relative deadline */
     unsigned int frames;            /* C : A unit consumes one frame */
-    unsigned int frame_count;
-    unsigned int success_rate_req;  /* S : Success rate requirement for the packet */
+    unsigned int frame_count;       /* FC: The amount of frames transmitted from this packet_count */
+    double       success_rate_req;  /* S : Success rate requirement for the packet */
 } packet_t;
 
 struct channel_t
