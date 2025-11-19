@@ -20,8 +20,8 @@ int main()
     BufferPacket buffer(system_tick);
     std::vector<fixed_rate_packet_t> fixed_rate_packets;
 
-    fixed_rate_packets.push_back(fixed_rate_packet_t(5U, 2U, 90U, 1U, 5U, 0U));
-    fixed_rate_packets.push_back(fixed_rate_packet_t(4U, 1U, 70U, 2U, 4U, 0U));
+    fixed_rate_packets.push_back(fixed_rate_packet_t(5U, 2U, 0.9, 1U, 5U, 0U));
+    fixed_rate_packets.push_back(fixed_rate_packet_t(4U, 1U, 0.7, 2U, 4U, 0U));
 
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet);
 
