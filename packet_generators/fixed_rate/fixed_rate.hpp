@@ -15,7 +15,7 @@ struct fixed_rate_packet_t
     unsigned int count;      /* Keeps track of packet spawn count */
     unsigned int relative_deadline;
 
-    fixed_rate_packet_t(unsigned int relative_deadline, unsigned int frames, unsigned int success_rate_req, unsigned int id, unsigned int fixed_rate, unsigned int phase) :
+    fixed_rate_packet_t(unsigned int relative_deadline, unsigned int frames, double success_rate_req, unsigned int id, unsigned int fixed_rate, unsigned int phase) :
         fixed_rate(fixed_rate), phase(phase), relative_deadline(relative_deadline)
     {
         count = 0U;
@@ -29,7 +29,7 @@ struct fixed_rate_packet_t
     unsigned int& id()               { return original_packet.id; }
     unsigned int& deadline()         { return original_packet.deadline; }
     unsigned int& frames()           { return original_packet.frames; }
-    unsigned int& success_rate_req() { return original_packet.success_rate_req; }
+    double&       success_rate_req() { return original_packet.success_rate_req; }
 };
 
 class FixedRate_PacketGen: public BasePacketGenerator
