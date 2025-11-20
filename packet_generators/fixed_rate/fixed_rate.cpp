@@ -2,8 +2,8 @@
 
 #include "fixed_rate.hpp"
 
-FixedRate_PacketGen::FixedRate_PacketGen(std::shared_ptr<unsigned int> system_tick, const std::vector<fixed_rate_packet_t>& packets, std::shared_ptr<std::vector<packet_t>> buffer_packet):
-    BasePacketGenerator(system_tick, buffer_packet), packets(packets) {};
+FixedRate_PacketGen::FixedRate_PacketGen(std::shared_ptr<unsigned int> system_tick, const std::vector<fixed_rate_packet_t>& packets, std::shared_ptr<std::vector<packet_t>> buffer_packet, std::shared_ptr<json> packet_gen_log):
+    BasePacketGenerator(system_tick, buffer_packet, packet_gen_log), packets(packets) {};
 
 void FixedRate_PacketGen::generate_packets(void)
 {

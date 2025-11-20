@@ -35,7 +35,7 @@ struct fixed_rate_packet_t
 class FixedRate_PacketGen: public BasePacketGenerator
 {
 public:
-    FixedRate_PacketGen(std::shared_ptr<unsigned int> system_tick, const std::vector<fixed_rate_packet_t>& packets, std::shared_ptr<std::vector<packet_t>> buffer_packet);
+    FixedRate_PacketGen(std::shared_ptr<unsigned int> system_tick, const std::vector<fixed_rate_packet_t>& packets, std::shared_ptr<std::vector<packet_t>> buffer_packet, std::shared_ptr<json> packet_gen_log);
     void generate_packets(void) override;
     std::string get_name(void) const override;
 
