@@ -2,6 +2,9 @@
 #include <vector>
 #include <memory>
 
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+
 /* System Model */
 #include "system_model/system_model.hpp"
 #include "system_model/buffer_packet/buffer_packet.hpp"
@@ -20,10 +23,15 @@ int main()
     BufferPacket buffer(system_tick);
     std::vector<fixed_rate_packet_t> fixed_rate_packets;
 
+    /* Initialize packet generators */
     fixed_rate_packets.push_back(fixed_rate_packet_t(5U, 2U, 0.9, 1U, 5U, 0U));
     fixed_rate_packets.push_back(fixed_rate_packet_t(4U, 1U, 0.7, 2U, 4U, 0U));
 
-    FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet);
+    /* Shared spawn log for all generators */
+    std::shared_ptr<json> spawn_log = std::make_shared<json>(json::array());
+
+
+    FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet, spawn_log);
 
     /* Initialize scheduler */
     EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet);
@@ -98,5 +106,8 @@ int main()
     }
 
     receiver.save_to_file("receiver_results.json");
+
+    BasePacketGenerator::save_to_file(spawn_log, "generated_packets.json");
+    receiver.save_to_file("received_packets.json");
 }
 
