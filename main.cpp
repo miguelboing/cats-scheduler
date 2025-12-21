@@ -105,8 +105,6 @@ int main()
         (*system_tick)++;
     }
 
-    receiver.save_to_file("receiver_results.json");
-
     BasePacketGenerator::save_to_file(spawn_log, "generated_packets.json");
     receiver.save_to_file("received_packets.json");
 }
