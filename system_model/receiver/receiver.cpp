@@ -1,56 +1,48 @@
-#include <random>
-#include <vector>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <random>
+#include <vector>
+#include <memory>
+
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 #include "system_model/system_model.hpp"
 #include "receiver.hpp"
 
-receiver_result_t Receiver::recv_packets(system_model_t system_model, schedule_result_t schedule_result)
+Receiver::Receiver(std::shared_ptr<unsigned int> sys_tick):
+    system_tick(sys_tick), frame_log(json::array()) {}
+
+bool Receiver::recv_frame(received_frame_t recv_frame)
 {
     std::bernoulli_distribution distribution(0.0);
-    receiver_result_t receiver_result;
-    frame_allocation_t cur_frame;
-    double frame_prob;
 
-    /* Use the channel_condition to emulate packet loss */
-    for (unsigned int i = 0U; i < system_model.number_of_frames; ++i)
-    {
-        /* Getting scheduled frame */
-        cur_frame = schedule_result.frame_allocation[i];
+    distribution = std::bernoulli_distribution(recv_frame.success_prob);
+    bool prob_result = distribution(this->generator);
 
-        /* Selecting the channel */
-        auto ch_it = std::find(system_model.frequencies.begin(), system_model.frequencies.end(), cur_frame.frequency);
-        if (ch_it != system_model.frequencies.end())
-        {
-            size_t ch_idx = std::distance(system_model.frequencies.begin(), ch_it);
-            auto& channel = (*system_model.channels)[ch_idx];
+    json frame_entry = {
+        {"system_tick", *(this->system_tick)},
+        {"packet_id", recv_frame.packet.id},
+        {"packet_id_count", recv_frame.packet.id_count},
+        {"deadline", recv_frame.packet.deadline},
+        {"frames", recv_frame.packet.frames},
+        {"frame_count", recv_frame.packet.frame_count},
+        {"success_rate_req", recv_frame.packet.success_rate_req},
+        {"transmission_power", recv_frame.transmission_power},
+        {"frequency", recv_frame.frequency},
+        {"success_prob", recv_frame.success_prob},
+        {"received", prob_result}
+    };
 
-            /* Selecting the probability function based on power */
-            auto pow_it = std::find(system_model.tx_power_levels.begin(), system_model.tx_power_levels.end(), cur_frame.tx_power);
-            if (pow_it != system_model.tx_power_levels.end())
-            {
-                size_t pow_idx = std::distance(system_model.tx_power_levels.begin(), pow_it);
-                frame_prob = (*channel.channel_condition)[pow_idx][i];
-            }
-        }
+    frame_log.push_back(frame_entry);
 
-        distribution = std::bernoulli_distribution(frame_prob);
-        bool prob_result = distribution(this->generator);
+    return prob_result;
+}
 
-
-        receiver_result.lost_frames.push_back(prob_result);
-
-        if (prob_result)
-        {
-            receiver_result.received_frames.push_back('0' + (char)(schedule_result.frame_allocation[i].packet_id));
-        }
-        else
-        {
-            receiver_result.received_frames.push_back('X');
-        }
-    }
-
-    return receiver_result;
+void Receiver::save_to_file(const std::string& filename)
+{
+    std::ofstream file(filename);
+    file << frame_log.dump(4);
 }
 

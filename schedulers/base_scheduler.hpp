@@ -17,7 +17,7 @@ public:
     void change_buffer_packet(std::shared_ptr<std::vector<packet_t>> buffer);
 
     /* Pure virtual functions that all schedulers must implement */
-    virtual scheduled_packet_t schedule_packet(void) = 0;
+    virtual scheduled_frame_t schedule_frame(void) = 0;
 
     virtual std::string get_name() const = 0;
 

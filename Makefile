@@ -1,5 +1,5 @@
 CPP = g++
-CFLAGS =-Wall -I$(CURDIR)
+CFLAGS =-Wall -I$(CURDIR) -I$(CURDIR)/libs
 
 ifndef $(BUILD_DIR)
 	BUILD_DIR=$(CURDIR)
@@ -10,28 +10,28 @@ TARGET = main
 .PHONY: all
 all: $(TARGET)
 
-$(TARGET): $(TARGET).cpp buffer_packet fixed_rate edf_scheduler transmitter physical_channel receiver
-	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o physical_channel.o edf_scheduler.o transmitter.o receiver.o -o $(TARGET).o
+$(TARGET): $(TARGET).cpp buffer_packet packet_gens schedulers transmitter physical_channels receiver
+	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o sigmoid_channel.o edf_scheduler.o transmitter.o receiver.o -o $(TARGET).o
+
+.PHONY: packet_gens
+packet_gens: packet_generators/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C packet_generators
+
+.PHONY: schedulers
+schedulers: schedulers/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C schedulers
+
+.PHONY: physical_channels
+physical_channels: physical_channels/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C physical_channels
 
 .PHONY: buffer_packet
-buffer_packet: buffer_packet/Makefile
-	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C buffer_packet
-
-.PHONY: fixed_rate
-fixed_rate: packet_generators/fixed_rate/Makefile
-	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C packet_generators/fixed_rate
-
-.PHONY: edf_scheduler
-edf_scheduler: schedulers/earliest_deadline_first/Makefile
-	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C schedulers/earliest_deadline_first
+buffer_packet: system_model/buffer_packet/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/buffer_packet
 
 .PHONY: transmitter
-transmitter: transmitter/Makefile
-	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C transmitter
-
-.PHONY: physical_channel
-physical_channel: system_model/physical_channel/Makefile
-	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/physical_channel
+transmitter: system_model/transmitter/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/transmitter
 
 .PHONY: receiver
 receiver: system_model/receiver/Makefile

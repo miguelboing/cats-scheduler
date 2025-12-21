@@ -1,4 +1,4 @@
-TARGET=physical_channel
+TARGET=sigmoid_channel
 
 ifndef BUILD_DIR
 	BUILD_DIR=$(CUR_DIR)

@@ -9,5 +9,5 @@ public:
 
     explicit Transmitter(std::shared_ptr<std::vector<packet_t>> buffer_packet);
 
-    transmitted_packet_t transmit_frame(scheduled_packet_t scheduled_packet);
+    transmitted_frame_t transmit_frame(scheduled_frame_t scheduled_frame);
 };

@@ -6,11 +6,11 @@
 
 EDF_scheduler::EDF_scheduler(unsigned int tx_power, unsigned int frequency, std::shared_ptr<std::vector<packet_t>> buffer_packet): BaseScheduler(buffer_packet), tx_power(tx_power), frequency(frequency) {};
 
-scheduled_packet_t EDF_scheduler::schedule_packet(void)
+scheduled_frame_t EDF_scheduler::schedule_frame(void)
 {
-    scheduled_packet_t scheduled_packet;
-    scheduled_packet.transmission_power = this->tx_power;
-    scheduled_packet.frequency = this->frequency;
+    scheduled_frame_t scheduled_frame;
+    scheduled_frame.transmission_power = this->tx_power;
+    scheduled_frame.frequency = this->frequency;
 
     /* Find the packet with the earliest deadline */
     auto lowest_it = std::min_element(this->buffer_packet->begin(),
@@ -20,15 +20,15 @@ scheduled_packet_t EDF_scheduler::schedule_packet(void)
                                       });
     if (lowest_it != this->buffer_packet->end())
     {
-        scheduled_packet.packet = &(*lowest_it);
+        scheduled_frame.packet = &(*lowest_it);
     }
     else
     {
-        scheduled_packet.packet = nullptr; /* Means idle/no tranmission */
+        scheduled_frame.packet = nullptr; /* Means idle/no tranmission */
     }
 
 
-    return scheduled_packet;
+    return scheduled_frame;
 }
 
 std::string EDF_scheduler::get_name() const {
