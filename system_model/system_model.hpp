@@ -12,7 +12,8 @@ typedef struct
     unsigned int frames;            /* C : A unit consumes one frame */
     unsigned int frame_count;       /* FC: The amount of frames transmitted from this packet_count */
     double       success_rate_req;  /* S : Success rate requirement for the packet */
-} packet_t;
+}
+packet_t;
 
 typedef struct
 {
