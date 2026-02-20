@@ -15,7 +15,7 @@ SigmoidChannel::SigmoidChannel(unsigned int frequency, double ref_power_w, doubl
     this->snr_50_db = ref_snr_db + (1.0/slope) * log((1.0 - ref_psr)/ref_psr);
 }
 
-double SigmoidChannel::gen_probability(unsigned int transmission_power);
+double SigmoidChannel::gen_probability(unsigned int transmission_power)
 {
     double tx_power_dbm, rx_power_dbm, snr_db;
 
