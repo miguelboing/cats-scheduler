@@ -9,7 +9,7 @@ using json = nlohmann::json;
 #include "system_model/system_model.hpp"
 #include "system_model/buffer_packet/buffer_packet.hpp"
 #include "system_model/transmitter/transmitter.hpp"
-#include "system_model/receiver/receiver.hpp"
+#include "system_model/target_receiver/target_receiver.hpp"
 
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
@@ -45,8 +45,8 @@ int main()
     std::vector<SigmoidChannel> channels;
     channels.emplace_back(14074000);  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
 
-    /* Initialize the receiver */
-    Receiver receiver(system_tick);
+    /* Initialize the target receiver */
+    TargetReceiver target_receiver(system_tick);
     received_frame_t recv_frame;
 
     for (unsigned int i = 0U; i < 20U; i++)
@@ -93,7 +93,7 @@ int main()
             std::cout << std::endl;
 
             std::cout << "Frame successfully decoded: "
-                      << receiver.recv_frame(recv_frame)
+                      << target_receiver.recv_frame(recv_frame)
                       << std::endl << std::endl;
         }
         else
@@ -106,6 +106,6 @@ int main()
     }
 
     BasePacketGenerator::save_to_file(spawn_log, "generated_packets.json");
-    receiver.save_to_file("received_packets.json");
+    target_receiver.save_to_file("received_packets.json");
 }
 
