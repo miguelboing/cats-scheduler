@@ -30,8 +30,8 @@ buffer_packet: system_model/buffer_packet/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/buffer_packet
 
 .PHONY: transmitter
-transmitter: system_model/transmitter/Makefile
-	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/transmitter
+transmitter: system_model/radio_interface/transmitter/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/radio_interface/transmitter
 
 .PHONY: radio_interface
 radio_interface: system_model/radio_interface/Makefile

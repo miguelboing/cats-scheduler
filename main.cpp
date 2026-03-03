@@ -1,4 +1,5 @@
 #include <iostream>
+#include <optional>
 #include <vector>
 #include <memory>
 
@@ -8,7 +9,7 @@ using json = nlohmann::json;
 /* System Model */
 #include "system_model/system_model.hpp"
 #include "system_model/buffer_packet/buffer_packet.hpp"
-#include "system_model/transmitter/transmitter.hpp"
+#include "system_model/radio_interface/radio_interface.hpp"
 #include "system_model/target_receiver/target_receiver.hpp"
 
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
@@ -37,8 +38,8 @@ int main()
     EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet);
     scheduled_frame_t scheduled_frame;
 
-    /* Initialize the transmitter */
-    Transmitter transmitter(buffer.buffer_packet);
+    /* Initialize the radio_interface */
+    RadioInterface radio_interface(buffer.buffer_packet);
     transmitted_frame_t transmitted_frame;
 
     /* Initialize the physical channels */
@@ -67,38 +68,67 @@ int main()
 
         scheduled_frame = scheduler.schedule_frame();
 
-        transmitted_frame = transmitter.transmit_frame(scheduled_frame);
-
-        std::cout    << "Transmitted packet: "
-                     << "(id: "                << transmitted_frame.packet.id
-                     << ", id_count: "         << transmitted_frame.packet.id_count
-                     << ", deadline: "         << transmitted_frame.packet.deadline
-                     << ", frames: "           << transmitted_frame.packet.frames
-                     << ", frame_count: "      << transmitted_frame.packet.frame_count
-                     << ", success_rate: "     << transmitted_frame.packet.success_rate_req << ") ";
-        std::cout    << std::endl << std::endl;
-
-        /* Find the channel for the packet */
-        auto it = std::find_if(channels.begin(), channels.end(),
-                                [&transmitted_frame](const SigmoidChannel& ch) {
-                                    return ch.frequency == transmitted_frame.frequency;
-                                });
-
-        if (it != channels.end())
+        switch (scheduled_frame.radio_mode)
         {
-            recv_frame = it->gen_frame_with_probability(transmitted_frame);
-            std::cout    << "Probability for the frame: " << recv_frame.success_prob
-                         << ", tx_power: "                 << recv_frame.transmission_power
-                         << ", freq_prob_success: "        << recv_frame.packet.success_rate_req << ") ";
-            std::cout << std::endl;
+            case TX_MODE: /* Transmission path */
+            {
+                auto result = radio_interface.transmit_frame(scheduled_frame);
 
-            std::cout << "Frame successfully decoded: "
-                      << target_receiver.recv_frame(recv_frame)
-                      << std::endl << std::endl;
-        }
-        else
-        {
-            std::cout << "ERROR: No matching channel found" << std::endl;
+                if (result.has_value())
+                {
+                    transmitted_frame = result.value();
+                }
+                else
+                {
+                    std::cout << "Failed to transmit a frame" << std::endl;
+
+                    return -1;
+                }
+
+                std::cout    << "Transmitted frame: "
+                             << "(id: "                << transmitted_frame.packet.id
+                             << ", id_count: "         << transmitted_frame.packet.id_count
+                             << ", deadline: "         << transmitted_frame.packet.deadline
+                             << ", frames: "           << transmitted_frame.packet.frames
+                             << ", frame_count: "      << transmitted_frame.packet.frame_count
+                             << ", success_rate: "     << transmitted_frame.packet.success_rate_req << ") ";
+                std::cout    << std::endl << std::endl;
+
+                /* Find the channel for the packet */
+                auto it = std::find_if(channels.begin(), channels.end(),
+                                        [&transmitted_frame](const SigmoidChannel& ch) {
+                                            return ch.frequency == transmitted_frame.frequency;
+                                        });
+
+                if (it != channels.end())
+                {
+                    recv_frame = it->gen_frame_with_probability(transmitted_frame);
+                    std::cout    << "Probability for the frame: " << recv_frame.success_prob
+                                 << ", tx_power: "                 << recv_frame.transmission_power
+                                 << ", freq_prob_success: "        << recv_frame.packet.success_rate_req << ") ";
+                    std::cout << std::endl;
+
+                    std::cout << "Frame successfully decoded: "
+                              << target_receiver.recv_frame(recv_frame)
+                              << std::endl << std::endl;
+                }
+                else
+                {
+                    std::cout << "ERROR: No matching channel found" << std::endl;
+                }
+
+                break;
+            }
+            case RX_MODE: /* Reception path */
+            /*TODO: Implement receiver, predict channel condition directly for now */
+
+            break;
+            case IDLE:
+
+            break;
+            default:
+
+            break;
         }
 
         buffer.check_deadlines();
