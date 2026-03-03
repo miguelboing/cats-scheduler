@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 #include <memory>
 
@@ -14,6 +15,6 @@ public:
 
     Transmitter transmitter;
 
-    std::optional<transmitted_frame_t> operate_radio(radio_mode_e mode, scheduled_frame_t scheduled_frame);
+    std::optional<transmitted_frame_t> transmit_frame(scheduled_frame_t scheduled_frame);
 };
 

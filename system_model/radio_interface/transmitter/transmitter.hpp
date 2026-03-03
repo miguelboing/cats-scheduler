@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "system_model/system_model.hpp"
 
 class Transmitter

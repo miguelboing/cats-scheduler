@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <optional>
 #include <iostream>
 
 #include "system_model/system_model.hpp"
