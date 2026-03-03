@@ -15,6 +15,12 @@ typedef struct
 }
 packet_t;
 
+typedef enum
+{
+    TX_MODE=0,
+    RX_MODE
+} radio_mode_e;
+
 typedef struct
 {
     packet_t* packet;

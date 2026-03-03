@@ -1,4 +1,4 @@
-TARGET=receiver
+TARGET=radio_interface
 
 ifndef BUILD_DIR
 	BUILD_DIR=$(CUR_DIR)

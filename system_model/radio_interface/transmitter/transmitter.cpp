@@ -8,7 +8,7 @@
 Transmitter::Transmitter(std::shared_ptr<std::vector<packet_t>> buffer_packet):
     buffer_packet(buffer_packet) {};
 
-transmitted_frame_t Transmitter::transmit_frame(scheduled_frame_t scheduled_frame)
+std::optional<transmitted_frame_t> Transmitter::transmit_frame(scheduled_frame_t scheduled_frame)
 {
     transmitted_frame_t transmitted_frame;
     transmitted_frame.transmission_power = scheduled_frame.transmission_power;
@@ -29,14 +29,20 @@ transmitted_frame_t Transmitter::transmit_frame(scheduled_frame_t scheduled_fram
 
     if (packet_it != this->buffer_packet->end())
     {
-        if (scheduled_frame.packet->frames > scheduled_frame.packet->frame_count) /* Check if this packet is valid */
+        if (packet_it->frames > packet_it->frame_count) /* Check if this packet is valid */
         {
-            scheduled_frame.packet->frame_count++;
+            packet_it->frame_count++;
+        }
+        else
+        {
+            std::cout << "ERROR: Packet is invalid frame_count > frames" << std::endl;
+            return std::nullopt;
         }
     }
     else
     {
         std::cout << "ERROR: Couldn't find the packet" << std::endl;
+        return std::nullopt;
     }
 
     return transmitted_frame;
