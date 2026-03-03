@@ -17,7 +17,8 @@ packet_t;
 
 typedef enum
 {
-    TX_MODE=0,
+    IDLE=0,
+    TX_MODE,
     RX_MODE
 } radio_mode_e;
 
@@ -26,6 +27,7 @@ typedef struct
     packet_t* packet;
     unsigned int transmission_power;
     unsigned int frequency;
+    radio_mode_e radio_mode;
 }
 scheduled_frame_t;
 
