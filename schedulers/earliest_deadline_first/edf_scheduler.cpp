@@ -21,10 +21,12 @@ scheduled_frame_t EDF_scheduler::schedule_frame(void)
     if (lowest_it != this->buffer_packet->end())
     {
         scheduled_frame.packet = &(*lowest_it);
+        scheduled_frame.radio_mode = TX_MODE;
     }
     else
     {
         scheduled_frame.packet = nullptr; /* Means idle/no tranmission */
+        scheduled_frame.radio_mode = IDLE;
     }
 
 
