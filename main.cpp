@@ -31,7 +31,6 @@ int main()
     /* Shared spawn log for all generators */
     std::shared_ptr<json> spawn_log = std::make_shared<json>(json::array());
 
-
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet, spawn_log);
 
     /* Initialize scheduler */
@@ -43,8 +42,12 @@ int main()
     transmitted_frame_t transmitted_frame;
 
     /* Initialize the physical channels */
-    std::vector<SigmoidChannel> channels;
-    channels.emplace_back(14074000);  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
+    std::shared_ptr<std::vector<SigmoidChannel>> channels = std::make_shared<std::vector<SigmoidChannel>>();
+    channels->emplace_back(14074000);  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
+
+    /* Initalize the ML Predictor */
+    MLPredictor ml_predictor(system_tick, channels);
+    double pred_dec_prob; /* Predicted Decoding probability */
 
     /* Initialize the target receiver */
     TargetReceiver target_receiver(system_tick);
@@ -95,12 +98,12 @@ int main()
                 std::cout    << std::endl << std::endl;
 
                 /* Find the channel for the packet */
-                auto it = std::find_if(channels.begin(), channels.end(),
+                auto it = std::find_if(channels->begin(), channels->end(),
                                         [&transmitted_frame](const SigmoidChannel& ch) {
                                             return ch.frequency == transmitted_frame.frequency;
                                         });
 
-                if (it != channels.end())
+                if (it != channels->end())
                 {
                     recv_frame = it->gen_frame_with_probability(transmitted_frame);
                     std::cout    << "Probability for the frame: " << recv_frame.success_prob
@@ -120,12 +123,15 @@ int main()
                 break;
             }
             case RX_MODE: /* Reception path */
-            /*TODO: Implement receiver, predict channel condition directly for now */
+                pred_dec_prob = ml_predictor.predict_channel_conditions(scheduled_frame.frequency, scheduled_frame.transmission_power);
 
-            break;
+                scheduler.receive_prediction(pred_dec_prob);
+
+                break;
             case IDLE:
+                /* Do nothing on this iteration */
 
-            break;
+                break;
             default:
 
             break;
