@@ -9,10 +9,10 @@ MLPredictor::MLPredictor(std::shared_ptr<unsigned int> sys_tick, std::shared_ptr
 
 double MLPredictor::predict_channel_conditions(unsigned int frequency, unsigned int transmission_power)
 {
-    auto it = std::find_if(channels.begin(), channels.end(),
+    auto it = std::find_if(channels->begin(), channels->end(),
         [frequency](const SigmoidChannel& ch) {return ch.frequency == frequency;});
 
-    if (it != channels.end())
+    if (it != channels->end())
     {
         return it->gen_probability(transmission_power);
     }

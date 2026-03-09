@@ -5,6 +5,8 @@
 
 #include "system_model/system_model.hpp"
 
+#include "physical_channels/sigmoid_channel/sigmoid_channel.hpp"
+
 class MLPredictor
 {
 public:
