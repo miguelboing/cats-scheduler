@@ -11,6 +11,7 @@ using json = nlohmann::json;
 #include "system_model/buffer_packet/buffer_packet.hpp"
 #include "system_model/radio_interface/radio_interface.hpp"
 #include "system_model/target_receiver/target_receiver.hpp"
+#include "system_model/ml_predictor/ml_predictor.hpp"
 
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
 #include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
@@ -34,7 +35,7 @@ int main()
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet, spawn_log);
 
     /* Initialize scheduler */
-    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet);
+    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet, system_tick);
     scheduled_frame_t scheduled_frame;
 
     /* Initialize the radio_interface */
@@ -143,5 +144,6 @@ int main()
 
     BasePacketGenerator::save_to_file(spawn_log, "generated_packets.json");
     target_receiver.save_to_file("received_packets.json");
+    scheduler.save_to_file();
 }
 

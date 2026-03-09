@@ -10,8 +10,8 @@ TARGET = main
 .PHONY: all
 all: $(TARGET)
 
-$(TARGET): $(TARGET).cpp buffer_packet packet_gens schedulers radio_interface transmitter physical_channels target_receiver
-	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o sigmoid_channel.o edf_scheduler.o transmitter.o radio_interface.o target_receiver.o -o $(TARGET).o
+$(TARGET): $(TARGET).cpp buffer_packet packet_gens schedulers radio_interface transmitter physical_channels target_receiver ml_predictor
+	$(CPP) $(CFLAGS) $(TARGET).cpp buffer_packet.o fixed_rate.o sigmoid_channel.o edf_scheduler.o transmitter.o radio_interface.o target_receiver.o ml_predictor.o -o $(TARGET).o
 
 .PHONY: packet_gens
 packet_gens: packet_generators/Makefile
@@ -40,6 +40,10 @@ radio_interface: system_model/radio_interface/Makefile
 .PHONY: target_receiver
 target_receiver: system_model/target_receiver/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/target_receiver
+
+.PHONY: ml_predictor
+ml_predictor: system_model/ml_predictor/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C system_model/ml_predictor
 
 clean:
 	$(RM) *.o
