@@ -14,8 +14,9 @@ using json = nlohmann::json;
 #include "system_model/ml_predictor/ml_predictor.hpp"
 
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
-#include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
 #include "physical_channels/sigmoid_channel/sigmoid_channel.hpp"
+
+#include "schedulers.hpp"
 
 int main()
 {
