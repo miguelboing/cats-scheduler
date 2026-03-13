@@ -17,6 +17,10 @@ $(TARGET): earliest_deadline_first_rule
 earliest_deadline_first_rule: earliest_deadline_first/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C earliest_deadline_first
 
+.PHONY: smaller_period_first_rule
+smaller_period_first_rule: smaller_period_first/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C smaller_period_first
+
 .PHONY: clean
 clean:
 	rm $(BUILD_DIR)/*.o
