@@ -15,6 +15,10 @@ void FixedRate_PacketGen::generate_packets(void)
             /* Set a deadline */
             packet.original_packet.deadline = packet.phase + (packet.relative_deadline * ++packet.count);
 
+            /* Set the period */
+            packet.original_packet.is_periodic = true;
+            packet.original_packet.period = packet.relative_deadline;
+
             this->add_packet_to_buffer(packet.original_packet);
          }
     }

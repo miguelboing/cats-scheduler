@@ -54,6 +54,8 @@ inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
         {"deadline", packet.deadline},
         {"frames", packet.frames},
         {"success_rate_req", packet.success_rate_req},
+        {"is_periodic", packet.is_periodic},
+        {"period", packet.period},
         {"generator_type", this->get_name()}  /* Track which generator spawned it */
     };
     this->packet_gen_log->push_back(spawn_entry);
