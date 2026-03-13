@@ -44,7 +44,7 @@ int main()
 
     /* Initialize the physical channels */
     std::shared_ptr<std::vector<SigmoidChannel>> channels = std::make_shared<std::vector<SigmoidChannel>>();
-    channels->emplace_back(14074000);  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
+    channels->emplace_back(14074000, "channel_20m");  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
 
     /* Initalize the ML Predictor */
     MLPredictor ml_predictor(system_tick, channels);
@@ -139,6 +139,9 @@ int main()
         }
 
         buffer.check_deadlines();
+        for (auto& ch : *channels)
+            ch.advance_fsmc_state();
+
         (*system_tick)++;
     }
 

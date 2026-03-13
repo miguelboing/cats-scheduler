@@ -28,16 +28,14 @@ typedef struct
     unsigned int transmission_power;
     unsigned int frequency;
     radio_mode_e radio_mode;
-}
-scheduled_frame_t;
+} scheduled_frame_t;
 
 typedef struct
 {
     packet_t packet;
     unsigned int transmission_power;
     unsigned int frequency;
-}
-transmitted_frame_t;
+} transmitted_frame_t;
 
 typedef struct
 {
@@ -45,6 +43,13 @@ typedef struct
     unsigned int transmission_power;
     unsigned int frequency;
     double success_prob;
-}
-received_frame_t;
+} received_frame_t;
+
+typedef struct
+{
+    double snr_50_db;        /* beta: SNR for 50% success rate */
+    double slope;            /* alpha: Steepness of sigmoid curve */
+    double max_saturation;   /* gamma: The maximum possible transmission power when tx_power -> inf */
+    double noise_floor_dbm;  /* Noise power in dBm */
+} markov_state_t;
 
