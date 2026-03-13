@@ -6,12 +6,14 @@
 
 typedef struct
 {
-    unsigned int id;                /* ID: Tasks unique identifier */
-    unsigned int id_count;          /* PC: Identifier between packets with the same ID */
-    unsigned int deadline;          /* D : This is the relative deadline */
-    unsigned int frames;            /* C : A unit consumes one frame */
-    unsigned int frame_count;       /* FC: The amount of frames transmitted from this packet_count */
-    double       success_rate_req;  /* S : Success rate requirement for the packet */
+    unsigned int id;                  /* ID: Tasks unique identifier */
+    unsigned int id_count;            /* PC: Identifier between packets with the same ID */
+    unsigned int deadline;            /* D : This is the relative deadline */
+    unsigned int frames;              /* C : A unit consumes one frame */
+    unsigned int frame_count;         /* FC: The amount of frames transmitted from this packet_count */
+    double       success_rate_req;    /* S : Success rate requirement for the packet */
+    bool         is_periodic = false; /* Flag to warn the scheduler if this packet is periodic or not */
+    unsigned int period;              /* P: If is_periodic is true, this value represents the period of the packet */
 }
 packet_t;
 
