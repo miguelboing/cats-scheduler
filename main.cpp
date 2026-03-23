@@ -36,7 +36,9 @@ int main()
     FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet, spawn_log);
 
     /* Initialize scheduler */
-    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet, system_tick);
+//    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet, system_tick);
+    CHASPF_scheduler scheduler(1, 14074000, 5, buffer.buffer_packet, system_tick);
+
     scheduled_frame_t scheduled_frame;
 
     /* Initialize the radio_interface */
@@ -127,6 +129,12 @@ int main()
             case RX_MODE: /* Reception path */
                 pred_dec_prob = ml_predictor.predict_channel_conditions(scheduled_frame.frequency, scheduled_frame.transmission_power);
 
+                std::cout << "Received frame, estimated probability for trasmission power "
+                          << scheduled_frame.transmission_power << "W at frequency "
+                          << scheduled_frame.frequency << "Hz: "
+                          << pred_dec_prob;
+                std::cout<< std::endl;
+
                 scheduler.receive_prediction(pred_dec_prob);
 
                 break;
@@ -141,7 +149,10 @@ int main()
 
         buffer.check_deadlines();
         for (auto& ch : *channels)
+        {
             ch.advance_fsmc_state();
+            std::cout << "Current FSMC State for frequency " << ch.frequency << "Hz is: " << ch.get_fsmc_state() << std::endl;
+        }
 
         (*system_tick)++;
     }
