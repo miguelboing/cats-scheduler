@@ -11,7 +11,7 @@ LDFLAGS=
 .PHONY: all
 all: $(TARGET)
 
-$(TARGET): earliest_deadline_first_rule
+$(TARGET): earliest_deadline_first_rule smaller_period_first_rule channel_aware_smaller_period_first_rule
 
 .PHONY: earliest_deadline_first_rule
 earliest_deadline_first_rule: earliest_deadline_first/Makefile
@@ -20,6 +20,10 @@ earliest_deadline_first_rule: earliest_deadline_first/Makefile
 .PHONY: smaller_period_first_rule
 smaller_period_first_rule: smaller_period_first/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C smaller_period_first
+
+.PHONY: channel_aware_smaller_period_first_rule
+channel_aware_smaller_period_first_rule: channel_aware_spf/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C channel_aware_spf
 
 .PHONY: clean
 clean:
