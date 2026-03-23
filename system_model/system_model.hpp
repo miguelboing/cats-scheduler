@@ -30,6 +30,7 @@ typedef struct
     unsigned int transmission_power;
     unsigned int frequency;
     radio_mode_e radio_mode;
+    bool remove_from_buffer = true;
 } scheduled_frame_t;
 
 typedef struct
