@@ -74,3 +74,8 @@ void SigmoidChannel::advance_fsmc_state(void)
     (void)this->mc.advance();
 }
 
+int SigmoidChannel::get_fsmc_state(void)
+{
+    return this->mc.current();
+}
+
