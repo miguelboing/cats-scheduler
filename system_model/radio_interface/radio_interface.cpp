@@ -13,6 +13,6 @@ RadioInterface::RadioInterface(std::shared_ptr<std::vector<packet_t>> buffer_pac
 
 std::optional<transmitted_frame_t> RadioInterface::transmit_frame(scheduled_frame_t scheduled_frame)
 {
-        return transmitter.transmit_frame(scheduled_frame);
+    return transmitter.transmit_frame(scheduled_frame);
 }
 
