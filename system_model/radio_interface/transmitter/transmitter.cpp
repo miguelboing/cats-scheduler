@@ -32,7 +32,10 @@ std::optional<transmitted_frame_t> Transmitter::transmit_frame(scheduled_frame_t
     {
         if (packet_it->frames > packet_it->frame_count) /* Check if this packet is valid */
         {
-            packet_it->frame_count++;
+            if (scheduled_frame.remove_from_buffer) /* Remove packet from buffer */
+            {
+                packet_it->frame_count++;
+            }
         }
         else
         {
