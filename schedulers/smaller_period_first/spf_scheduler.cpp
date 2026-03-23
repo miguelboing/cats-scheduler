@@ -16,12 +16,12 @@ scheduled_frame_t SPF_scheduler::do_schedule_frame(void)
     auto lowest_it = std::min_element(this->buffer_packet->begin(),
                                       this->buffer_packet->end(),
                                       [](const packet_t& a, const packet_t& b) {
-                                          if (!a.is_period) return false;
-                                          if (!b.is_period) return true;
+                                          if (!a.is_periodic) return false;
+                                          if (!b.is_periodic) return true;
                                           return a.period < b.period;
                                       });
 
-    if (lowest_it != this->buffer_packet->end() && lowest_it->is_period)
+    if (lowest_it != this->buffer_packet->end() && lowest_it->is_periodic)
     {
         scheduled_frame.packet = &(*lowest_it);
         scheduled_frame.radio_mode = TX_MODE;
