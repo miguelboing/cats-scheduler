@@ -9,9 +9,8 @@ CPP=g++
 LDFLAGS=
 
 .PHONY: all
-all: $(TARGET)
-
-$(TARGET): $(TARGET).cpp
+all: $(BUILD_DIR)/$(TARGET).o
+$(BUILD_DIR)/$(TARGET).o: $(TARGET).cpp
 	$(CPP) $(CFLAGS) -c $(TARGET).cpp -o $(BUILD_DIR)/$(TARGET).o
 
 .PHONY: clean
