@@ -32,7 +32,7 @@ SigmoidChannel::SigmoidChannel(unsigned int frequency, const std::string& channe
     }
 
     /* Defining initial state for fsmc */
-    std::uniform_int_distribution<int> distribution(0, 4);
+    std::uniform_int_distribution<int> distribution(0, 2);
     this->mc.setState(distribution(generator));
 }
 
@@ -51,7 +51,7 @@ double SigmoidChannel::gen_probability(unsigned int transmission_power)
     rx_power_dbm = tx_power_dbm - this->pathloss_db;
 
     /* SNR considering the noisefloor */
-    snr_db = rx_power_dbm - this->fsmc[fsmc_state].noise_floor_dbm;
+    snr_db = rx_power_dbm; //- this->fsmc[fsmc_state].noise_floor_dbm;
 
     /* Calculating the probability on the sigmoid slope */
     return this->fsmc[fsmc_state].max_saturation / (1.0 + exp(-(this->fsmc[fsmc_state].slope) * (snr_db - (this->fsmc[fsmc_state].snr_50_db))));

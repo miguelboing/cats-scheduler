@@ -8,7 +8,6 @@ class MLPredictor;
 
 class SigmoidChannel: public BasePhysicalChannel
 {
-
 friend class MLPredictor;
 public:
     explicit SigmoidChannel(unsigned int frequency, const std::string& channel_name);
@@ -19,7 +18,7 @@ public:
     int get_fsmc_state(void);
 
     std::vector<markov_state_t> fsmc;
-    kovian::MarkovChain<5> mc;
+    kovian::MarkovChain<4> mc;
 
 private:
     std::default_random_engine generator;
