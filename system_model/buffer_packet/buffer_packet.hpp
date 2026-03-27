@@ -4,7 +4,6 @@
 #include <memory>
 #include <iostream>
 #include <algorithm>
-
 #include "system_model/system_model.hpp"
 
 /* This class keeps controls of the arriving packets, transmited packets and missed deadlines */
@@ -19,7 +18,7 @@ public:
 
     virtual ~BufferPacket() = default;
 
-    void check_deadlines(void);
+    std::vector<packet_t> check_deadlines(void);
 
     static std::string get_name();
 };
