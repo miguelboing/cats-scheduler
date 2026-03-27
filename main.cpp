@@ -37,7 +37,7 @@ int main()
 
     /* Initialize scheduler */
 //    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet, system_tick);
-    CHASPF_scheduler scheduler(1, 14074000, 5, buffer.buffer_packet, system_tick);
+    CHASPF_scheduler scheduler(10, 14074000, 5, buffer.buffer_packet, system_tick);
 
     scheduled_frame_t scheduled_frame;
 
@@ -61,6 +61,7 @@ int main()
     {
         fixed_rate_packet_gen.generate_packets();
 
+        std::cout << "--------------------------------------------------------------------------------" << std::endl;
         std::cout << "Frame " << *system_tick << " - Buffer contents: " << std::endl;
         for (const auto& packet : *buffer.buffer_packet) {
             std::cout << "(id: "            << packet.id
@@ -75,10 +76,14 @@ int main()
 
         scheduled_frame = scheduler.schedule_frame();
 
+         std::cout << "Radio is in ";
+
         switch (scheduled_frame.radio_mode)
         {
             case TX_MODE: /* Transmission path */
             {
+
+                std::cout << "TX MODE" << std::endl;
                 auto result = radio_interface.transmit_frame(scheduled_frame);
 
                 if (result.has_value())
@@ -99,7 +104,7 @@ int main()
                              << ", frames: "           << transmitted_frame.packet.frames
                              << ", frame_count: "      << transmitted_frame.packet.frame_count
                              << ", success_rate: "     << transmitted_frame.packet.success_rate_req << ") ";
-                std::cout    << std::endl << std::endl;
+                std::cout    <<  std::endl;
 
                 /* Find the channel for the packet */
                 auto it = std::find_if(channels->begin(), channels->end(),
@@ -110,14 +115,14 @@ int main()
                 if (it != channels->end())
                 {
                     recv_frame = it->gen_frame_with_probability(transmitted_frame);
-                    std::cout    << "Probability for the frame: " << recv_frame.success_prob
-                                 << ", tx_power: "                 << recv_frame.transmission_power
-                                 << ", freq_prob_success: "        << recv_frame.packet.success_rate_req << ") ";
+                    std::cout   << "TX Power : "                   << recv_frame.transmission_power
+                                << "\nProbability for the frame: " << recv_frame.success_prob
+                                << " and required probability: "   << recv_frame.packet.success_rate_req;
                     std::cout << std::endl;
 
-                    std::cout << "Frame successfully decoded: "
+                    std::cout << "Frame successfully received by the target? "
                               << target_receiver.recv_frame(recv_frame)
-                              << std::endl << std::endl;
+                              << std::endl;
                 }
                 else
                 {
@@ -127,9 +132,11 @@ int main()
                 break;
             }
             case RX_MODE: /* Reception path */
+                std::cout << "RX MODE" << std::endl;
+
                 pred_dec_prob = ml_predictor.predict_channel_conditions(scheduled_frame.frequency, scheduled_frame.transmission_power);
 
-                std::cout << "Received frame, estimated probability for trasmission power "
+                std::cout << "Predicted probability for "
                           << scheduled_frame.transmission_power << "W at frequency "
                           << scheduled_frame.frequency << "Hz: "
                           << pred_dec_prob;
@@ -139,6 +146,7 @@ int main()
 
                 break;
             case IDLE:
+                std::cout << "IDLE MODE" << std::endl;
                 /* Do nothing on this iteration */
 
                 break;
@@ -147,11 +155,32 @@ int main()
             break;
         }
 
-        buffer.check_deadlines();
+        auto missed_packets = buffer.check_deadlines();
+        for (const auto& missed : missed_packets)
+        {
+            std::cout << "Missed deadline for packet:"
+                      << " ID: "       << missed.id
+                      << " ID Count: " << missed.id_count
+                      << " Deadline: " << missed.deadline
+                      << " Frames: "   << missed.frames
+                      << " SR Req: "   << missed.success_rate_req
+                      << std::endl;
+        }
+
+        std:: cout << "\nFSMC STATUS" << std::endl;
         for (auto& ch : *channels)
         {
+            int fsmc_state = ch.get_fsmc_state();
+            std:: cout << "Frequency: " << ch.frequency << std::endl;
+            std::cout << "State: " << fsmc_state << std::endl;
+            std::cout << "Parameters"
+                      << "\nSlope: " << ch.fsmc[fsmc_state].slope
+                      << "\nSNR@50% [dB]: " << ch.fsmc[fsmc_state].snr_50_db
+                      << "\nMax Saturation: " << ch.fsmc[fsmc_state].max_saturation
+                      << "\nNoise Floor [dBm]: " << ch.fsmc[fsmc_state].noise_floor_dbm;
+            std::cout << std::endl << std::endl;
+
             ch.advance_fsmc_state();
-            std::cout << "Current FSMC State for frequency " << ch.frequency << "Hz is: " << ch.get_fsmc_state() << std::endl;
         }
 
         (*system_tick)++;
