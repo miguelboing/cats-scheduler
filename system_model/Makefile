@@ -5,10 +5,8 @@ ifndef $(BUILD_DIR)
 	BUILD_DIR=$(CURDIR)
 endif
 
-TARGET = system_model
-
-.PHONY: $(TARGET)
-$(TARGET): buffer_packet_rule radio_interface_rule target_receiver_rule ml_predictor_rule
+.PHONY: all
+all: buffer_packet_rule radio_interface_rule target_receiver_rule ml_predictor_rule
 
 buffer_packet_rule: buffer_packet/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C buffer_packet

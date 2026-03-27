@@ -11,10 +11,10 @@ LDFLAGS=
 .PHONY: all
 all: $(BUILD_DIR)/$(TARGET).o
 
-$(TARGET): $(TARGET).cpp transmitter_rule
+$(BUILD_DIR)/$(TARGET).o: $(TARGET).cpp $(BUILD_DIR)/transmitter.o
 	$(CPP) $(CFLAGS) -c $(TARGET).cpp -o $(BUILD_DIR)/$(TARGET).o
 
-transmitter_rule: transmitter/Makefile
+$(BUILD_DIR)/transmitter.o: transmitter/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C transmitter
 
 .PHONY: clean
