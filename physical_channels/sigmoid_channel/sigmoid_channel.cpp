@@ -14,7 +14,7 @@ using namespace kovian::aliases;
 SigmoidChannel::SigmoidChannel(unsigned int frequency, const std::string& channel_name):
     BasePhysicalChannel(frequency), mc("physical_channels/" + channel_name + "/transition_matrix.kov")
 {
-    this->pathloss_db = 0;
+    this->pathloss_db = 20;
 
     /* Loading States */
     std::ifstream f("physical_channels/" + channel_name + "/fsmc_states.json");
@@ -54,7 +54,7 @@ double SigmoidChannel::gen_probability(unsigned int transmission_power)
     snr_db = rx_power_dbm - this->fsmc[fsmc_state].noise_floor_dbm;
 
     /* Calculating the probability on the sigmoid slope */
-    return 1.0 / (1.0 + exp(-(this->fsmc[fsmc_state].slope) * (snr_db - (this->fsmc[fsmc_state].snr_50_db))));
+    return this->fsmc[fsmc_state].max_saturation / (1.0 + exp(-(this->fsmc[fsmc_state].slope) * (snr_db - (this->fsmc[fsmc_state].snr_50_db))));
 }
 
 received_frame_t SigmoidChannel::gen_frame_with_probability(transmitted_frame_t transmitted_frame)
