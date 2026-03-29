@@ -32,7 +32,7 @@ SigmoidChannel::SigmoidChannel(unsigned int frequency, const std::string& channe
     }
 
     /* Defining initial state for fsmc */
-    std::uniform_int_distribution<int> distribution(0, 2);
+    std::uniform_int_distribution<int> distribution(0, 3);
     this->mc.setState(distribution(generator));
 }
 
