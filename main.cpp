@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <optional>
 #include <vector>
 #include <memory>
@@ -18,26 +19,93 @@ using json = nlohmann::json;
 
 #include "schedulers.hpp"
 
-int main()
+int main(int argc, char* argv[])
 {
+    const std::string config_file = (argc > 1) ? argv[1] : "simulation_config.json";
+    std::ifstream f(config_file);
+    if (!f.is_open())
+    {
+        std::cout << "ERROR: Could not open config file: " << config_file << std::endl;
+        return -1;
+    }
+    json config = json::parse(f);
+
     std::shared_ptr<unsigned int> system_tick = std::make_shared<unsigned int>(0U);
 
     /* Initialize packet buffer */
     BufferPacket buffer(system_tick);
-    std::vector<fixed_rate_packet_t> fixed_rate_packets;
-
-    /* Initialize packet generators */
-    fixed_rate_packets.push_back(fixed_rate_packet_t(5U, 2U, 0.9, 1U, 5U, 0U));
-    fixed_rate_packets.push_back(fixed_rate_packet_t(4U, 1U, 0.7, 2U, 4U, 0U));
 
     /* Shared spawn log for all generators */
     std::shared_ptr<json> spawn_log = std::make_shared<json>(json::array());
 
-    FixedRate_PacketGen fixed_rate_packet_gen(system_tick, fixed_rate_packets, buffer.buffer_packet, spawn_log);
+    /* Initialize packet generators from config */
+    std::vector<FixedRate_PacketGen> packet_gens;
+    for (const auto& gen : config["packet_generators"])
+    {
+        if (gen["type"] == "fixed_rate")
+        {
+            std::vector<fixed_rate_packet_t> packets;
+            for (const auto& p : gen["packets"])
+            {
+                packets.push_back(fixed_rate_packet_t(
+                    p["relative_deadline"],
+                    p["frames"],
+                    p["success_rate"],
+                    p["id"],
+                    p["period"],
+                    p["phase"]
+                ));
+            }
+            packet_gens.emplace_back(system_tick, packets, buffer.buffer_packet, spawn_log);
+        }
+    }
 
-    /* Initialize scheduler */
-//    EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet, system_tick);
-    CHASPF_scheduler scheduler(10, 14074000, 5, buffer.buffer_packet, system_tick);
+    /* Initialize channels from config */
+    std::shared_ptr<std::vector<SigmoidChannel>> channels = std::make_shared<std::vector<SigmoidChannel>>();
+    for (const auto& ch : config["channels"])
+    {
+        if (ch["type"] == "sigmoid")
+            channels->emplace_back(ch["frequency"], ch["name"]);
+    }
+
+    /* Initialize scheduler from config */
+    const auto& sched_cfg = config["scheduler"];
+    const std::string sched_type = sched_cfg["type"];
+
+    std::unique_ptr<BaseScheduler> scheduler;
+    if (sched_type == "CHASPF")
+    {
+        scheduler = std::make_unique<CHASPF_scheduler>(
+            sched_cfg["tx_power"],
+            sched_cfg["frequency"],
+            sched_cfg["rx_period"],
+            buffer.buffer_packet,
+            system_tick
+        );
+    }
+    else if (sched_type == "EDF")
+    {
+        scheduler = std::make_unique<EDF_scheduler>(
+            sched_cfg["tx_power"],
+            sched_cfg["frequency"],
+            buffer.buffer_packet,
+            system_tick
+        );
+    }
+    else if (sched_type == "SPF")
+    {
+        scheduler = std::make_unique<SPF_scheduler>(
+            sched_cfg["tx_power"],
+            sched_cfg["frequency"],
+            buffer.buffer_packet,
+            system_tick
+        );
+    }
+    else
+    {
+        std::cout << "ERROR: Unknown scheduler type: " << sched_type << std::endl;
+        return -1;
+    }
 
     scheduled_frame_t scheduled_frame;
 
@@ -45,21 +113,20 @@ int main()
     RadioInterface radio_interface(buffer.buffer_packet);
     transmitted_frame_t transmitted_frame;
 
-    /* Initialize the physical channels */
-    std::shared_ptr<std::vector<SigmoidChannel>> channels = std::make_shared<std::vector<SigmoidChannel>>();
-    channels->emplace_back(14074000, "channel_20m");  /* Uses defaults: snr50=10.0, s=2.0, noise=-90.0, pathloss=100 */
-
-    /* Initalize the ML Predictor */
+    /* Initialize the ML Predictor */
     MLPredictor ml_predictor(system_tick, channels);
-    double pred_dec_prob; /* Predicted Decoding probability */
+    double pred_dec_prob;
 
     /* Initialize the target receiver */
     TargetReceiver target_receiver(system_tick);
     received_frame_t recv_frame;
 
-    for (unsigned int i = 0U; i < 20U; i++)
+    const unsigned int duration = config["simulation"]["duration"];
+
+    for (unsigned int i = 0U; i < duration; i++)
     {
-        fixed_rate_packet_gen.generate_packets();
+        for (auto& gen : packet_gens)
+            gen.generate_packets();
 
         std::cout << "--------------------------------------------------------------------------------" << std::endl;
         std::cout << "Frame " << *system_tick << " - Buffer contents: " << std::endl;
@@ -74,15 +141,14 @@ int main()
 
         std::cout << std::endl;
 
-        scheduled_frame = scheduler.schedule_frame();
+        scheduled_frame = scheduler->schedule_frame();
 
-         std::cout << "Radio is in ";
+        std::cout << "Radio is in ";
 
         switch (scheduled_frame.radio_mode)
         {
-            case TX_MODE: /* Transmission path */
+            case TX_MODE:
             {
-
                 std::cout << "TX MODE" << std::endl;
                 auto result = radio_interface.transmit_frame(scheduled_frame);
 
@@ -93,7 +159,6 @@ int main()
                 else
                 {
                     std::cout << "Failed to transmit a frame" << std::endl;
-
                     return -1;
                 }
 
@@ -104,9 +169,8 @@ int main()
                              << ", frames: "           << transmitted_frame.packet.frames
                              << ", frame_count: "      << transmitted_frame.packet.frame_count
                              << ", success_rate: "     << transmitted_frame.packet.success_rate_req << ") ";
-                std::cout    <<  std::endl;
+                std::cout    << std::endl;
 
-                /* Find the channel for the packet */
                 auto it = std::find_if(channels->begin(), channels->end(),
                                         [&transmitted_frame](const SigmoidChannel& ch) {
                                             return ch.frequency == transmitted_frame.frequency;
@@ -131,7 +195,7 @@ int main()
 
                 break;
             }
-            case RX_MODE: /* Reception path */
+            case RX_MODE:
                 std::cout << "RX MODE" << std::endl;
 
                 pred_dec_prob = ml_predictor.predict_channel_conditions(scheduled_frame.frequency, scheduled_frame.transmission_power);
@@ -140,19 +204,18 @@ int main()
                           << scheduled_frame.transmission_power << "W at frequency "
                           << scheduled_frame.frequency << "Hz: "
                           << pred_dec_prob;
-                std::cout<< std::endl;
+                std::cout << std::endl;
 
-                scheduler.receive_prediction(pred_dec_prob);
+                scheduler->receive_prediction(pred_dec_prob);
 
                 break;
+
             case IDLE:
                 std::cout << "IDLE MODE" << std::endl;
-                /* Do nothing on this iteration */
-
                 break;
-            default:
 
-            break;
+            default:
+                break;
         }
 
         auto missed_packets = buffer.check_deadlines();
@@ -167,11 +230,11 @@ int main()
                       << std::endl;
         }
 
-        std:: cout << "\nFSMC STATUS" << std::endl;
+        std::cout << "\nFSMC STATUS" << std::endl;
         for (auto& ch : *channels)
         {
             int fsmc_state = ch.get_fsmc_state();
-            std:: cout << "Frequency: " << ch.frequency << std::endl;
+            std::cout << "Frequency: " << ch.frequency << std::endl;
             std::cout << "State: " << fsmc_state << std::endl;
             std::cout << "Parameters"
                       << "\nSlope: " << ch.fsmc[fsmc_state].slope
@@ -188,6 +251,5 @@ int main()
 
     BasePacketGenerator::save_to_file(spawn_log, "generated_packets.json");
     target_receiver.save_to_file("received_packets.json");
-    scheduler.save_to_file();
+    scheduler->save_to_file();
 }
-
