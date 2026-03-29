@@ -279,6 +279,7 @@ int main(int argc, char* argv[])
                 {"id_count",         missed.id_count},
                 {"deadline",         missed.deadline},
                 {"frames",           missed.frames},
+                {"frame_count",      missed.frame_count},
                 {"success_rate_req", missed.success_rate_req}
             });
         }
