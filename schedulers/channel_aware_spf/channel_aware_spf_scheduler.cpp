@@ -69,9 +69,9 @@ scheduled_frame_t CHASPF_scheduler::do_schedule_frame(void)
     return scheduled_frame;
 }
 
-void CHASPF_scheduler::receive_prediction(double pred_dec_prob)
+void CHASPF_scheduler::receive_prediction(const std::vector<double>& pred_probs)
 {
-    this->transmission_prob = pred_dec_prob;
+    this->transmission_prob = pred_probs[0]; /* Only 10W predicted */
 }
 
 std::string CHASPF_scheduler::get_name() const {

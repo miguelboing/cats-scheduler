@@ -12,6 +12,9 @@ public:
     unsigned int frequency;
     scheduled_frame_t do_schedule_frame(void) override;
 
+    void receive_prediction(const std::vector<double>& pred_probs) override {}
+    std::vector<unsigned int> get_prediction_powers() const override { return {}; }
+
     std::string get_name() const override;
 };
 

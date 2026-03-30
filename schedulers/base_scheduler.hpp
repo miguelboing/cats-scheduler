@@ -28,7 +28,9 @@ public:
 virtual std::string get_name() const = 0;
 
     /* Non Pure virtual function */
-    virtual void receive_prediction(double pred_dec_prob); /* This function handles the channel predictions */
+    virtual void receive_prediction(const std::vector<double>& pred_probs); /* This function handles the channel predictions */
+
+    virtual std::vector<unsigned int> get_prediction_powers() const { return {}; } /* Powers (W) the scheduler wants predicted */
 
     std::shared_ptr<std::vector<packet_t>> buffer_packet; /* Vector that points to the queue to be scheduled */
 
@@ -51,7 +53,7 @@ inline void BaseScheduler::change_buffer_packet(std::shared_ptr<std::vector<pack
     this->buffer_packet = buffer; /* Keep an untouched reference to the original queue */
 }
 
-inline void BaseScheduler::receive_prediction(double pred_dec_prob)
+inline void BaseScheduler::receive_prediction(const std::vector<double>& pred_probs)
 {
     return;
 }
