@@ -115,7 +115,7 @@ int main(int argc, char* argv[])
 
     /* Initialize the ML Predictor */
     MLPredictor ml_predictor(system_tick, channels);
-    double pred_dec_prob;
+    std::vector<double> pred_probs;
 
     /* Initialize the target receiver */
     TargetReceiver target_receiver(system_tick);
@@ -234,19 +234,18 @@ int main(int argc, char* argv[])
                 std::cout << "RX MODE" << std::endl;
                 frame_entry["radio_mode"] = "RX_MODE";
 
-                pred_dec_prob = ml_predictor.predict_channel_conditions(scheduled_frame.frequency, scheduled_frame.transmission_power);
+                pred_probs = ml_predictor.predict_channel_conditions(scheduled_frame.frequency, scheduler->get_prediction_powers());
 
-                std::cout << "Predicted probability for "
-                          << scheduled_frame.transmission_power << "W at frequency "
-                          << scheduled_frame.frequency << "Hz: "
-                          << pred_dec_prob;
+                std::cout << "Predicted probabilities at frequency " << scheduled_frame.frequency << "Hz:";
+                for (size_t k = 0; k < scheduler->get_prediction_powers().size(); k++)
+                    std::cout << " " << scheduler->get_prediction_powers()[k] << "W=" << pred_probs[k];
                 std::cout << std::endl;
 
-                scheduler->receive_prediction(pred_dec_prob);
+                scheduler->receive_prediction(pred_probs);
 
                 frame_entry["prediction"] = {
-                    {"probability", pred_dec_prob},
-                    {"tx_power",    scheduled_frame.transmission_power},
+                    {"powers",      scheduler->get_prediction_powers()},
+                    {"probs",       pred_probs},
                     {"frequency",   scheduled_frame.frequency}
                 };
 

@@ -168,8 +168,8 @@ class Transmission:
 
 @dataclass
 class Prediction:
-    probability: float
-    tx_power: int
+    powers: list[int]
+    probs: list[float]
     frequency: int
 
 @dataclass
@@ -220,9 +220,9 @@ def parse_frame(d: dict) -> Frame:
     if "prediction" in d:
         p = d["prediction"]
         prediction = Prediction(
-            probability = p["probability"],
-            tx_power    = p["tx_power"],
-            frequency   = p["frequency"]
+            powers    = p["powers"],
+            probs     = p["probs"],
+            frequency = p["frequency"]
         )
 
     return Frame(
@@ -283,8 +283,8 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
 
     fsmc_state  = [f.fsmc[0].state if f.fsmc else None for f in frames]
     tx_prob     = [f.transmission.probability if f.transmission else None for f in frames]
-    tx_power    = [f.transmission.tx_power    if f.transmission else None for f in frames]
-    pred_prob   = [f.prediction.probability   if f.prediction   else None for f in frames]
+    tx_power    = [f.transmission.tx_power if f.transmission else 0 for f in frames]
+    pred_prob   = [f.prediction.probs[0] if f.prediction else None for f in frames]
     missed_ticks = [f.tick for f in frames if f.missed_packets]
 
     cumulative_missed = []
@@ -394,17 +394,16 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax4.legend()
     ax4.grid(True, alpha=0.3)
 
-    # 5. TX power
+    # 5. Average power consumption (0W for IDLE/RX)
     ax5 = fig.add_subplot(gs[2, 1])
-    pw_ticks = [ticks[i] for i, v in enumerate(m["tx_power"]) if v is not None]
-    pw_vals  = [v for v in m["tx_power"] if v is not None]
-    if pw_vals:
-        avg_power = sum(pw_vals) / len(pw_vals)
-        ax5.scatter(pw_ticks, pw_vals, s=4, color="steelblue", alpha=0.5)
-        ax5.axhline(y=avg_power, color="orange", linestyle="--", linewidth=1, label=f"Avg = {avg_power:.1f}W")
-    ax5.set_ylabel("TX Power (W)")
+    pw_vals = m["tx_power"]
+    cumulative_avg = [sum(pw_vals[:i+1]) / (i+1) for i in range(len(pw_vals))]
+    final_avg = cumulative_avg[-1] if cumulative_avg else 0
+    ax5.plot(ticks, pw_vals, color="steelblue", linewidth=0.6, alpha=0.4, label="Power per tick")
+    ax5.plot(ticks, cumulative_avg, color="orange", linewidth=1.2, label=f"Cumulative avg = {final_avg:.2f}W")
+    ax5.set_ylabel("Power (W)")
     ax5.set_xlabel("Tick")
-    ax5.set_title("Transmission Power")
+    ax5.set_title("Power Consumption (0W = IDLE/RX)")
     ax5.legend()
     ax5.grid(True, alpha=0.3)
 
