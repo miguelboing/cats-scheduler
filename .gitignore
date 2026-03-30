@@ -1,6 +1,7 @@
 main
 bin/
 *.json
+*.png
 
 # Prerequisites
 *.d
