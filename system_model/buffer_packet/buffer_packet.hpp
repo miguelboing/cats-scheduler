@@ -20,6 +20,10 @@ public:
 
     std::vector<packet_t> check_deadlines(void);
 
+    std::vector<packet_t> drop_packet(unsigned int id, unsigned int id_count);
+
+    std::vector<packet_t> dropped_packets;
+
     static std::string get_name();
 };
 

@@ -29,6 +29,26 @@ std::vector<packet_t> BufferPacket::check_deadlines(void)
     return missed_packets;
 }
 
+std::vector<packet_t> BufferPacket::drop_packet(unsigned int id, unsigned int id_count)
+{
+    std::vector<packet_t> dropped;
+    auto it = this->buffer_packet->begin();
+    while (it != this->buffer_packet->end())
+    {
+        if (it->id == id && it->id_count == id_count)
+        {
+            dropped.push_back(*it);
+            it = this->buffer_packet->erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    this->dropped_packets.insert(this->dropped_packets.end(), dropped.begin(), dropped.end());
+    return dropped;
+}
+
 std::string BufferPacket::get_name()
 {
     return "BufferPacket";
