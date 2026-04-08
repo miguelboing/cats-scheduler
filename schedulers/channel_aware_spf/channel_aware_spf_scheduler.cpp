@@ -4,7 +4,7 @@
 
 #include "channel_aware_spf_scheduler.hpp"
 
-CHASPF_scheduler::CHASPF_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, std::shared_ptr<std::vector<packet_t>> buffer_packet, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer_packet, sys_tick), tx_power(tx_power), frequency(frequency), rx_period(rx_period), transmission_prob(0) {};
+CHASPF_scheduler::CHASPF_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency), rx_period(rx_period), transmission_prob(0) {};
 
 scheduled_frame_t CHASPF_scheduler::do_schedule_frame(void)
 {

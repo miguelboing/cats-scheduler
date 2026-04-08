@@ -4,7 +4,7 @@
 
 #include "edf_scheduler.hpp"
 
-EDF_scheduler::EDF_scheduler(unsigned int tx_power, unsigned int frequency, std::shared_ptr<std::vector<packet_t>> buffer_packet, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer_packet, sys_tick), tx_power(tx_power), frequency(frequency) {};
+EDF_scheduler::EDF_scheduler(unsigned int tx_power, unsigned int frequency, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency) {};
 
 scheduled_frame_t EDF_scheduler::do_schedule_frame(void)
 {

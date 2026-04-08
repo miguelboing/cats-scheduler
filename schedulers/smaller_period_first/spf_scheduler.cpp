@@ -4,7 +4,7 @@
 
 #include "spf_scheduler.hpp"
 
-SPF_scheduler::SPF_scheduler(unsigned int tx_power, unsigned int frequency, std::shared_ptr<std::vector<packet_t>> buffer_packet, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer_packet, sys_tick), tx_power(tx_power), frequency(frequency) {};
+SPF_scheduler::SPF_scheduler(unsigned int tx_power, unsigned int frequency, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency) {};
 
 scheduled_frame_t SPF_scheduler::do_schedule_frame(void)
 {

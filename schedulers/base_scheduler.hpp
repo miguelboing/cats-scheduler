@@ -8,11 +8,12 @@
 using json = nlohmann::json;
 
 #include "system_model/system_model.hpp"
+#include "system_model/buffer_packet/buffer_packet.hpp"
 
 class BaseScheduler
 {
 public:
-    BaseScheduler(std::shared_ptr<std::vector<packet_t>> buffer, std::shared_ptr<unsigned int> sys_tick);
+    BaseScheduler(BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
 
     virtual ~BaseScheduler() = default;
 
@@ -36,16 +37,18 @@ virtual std::string get_name() const = 0;
 
     std::shared_ptr<unsigned int> system_tick;
 
+    BufferPacket* buffer;
+
 private:
     virtual scheduled_frame_t do_schedule_frame(void) = 0;
 
     json frame_log;  /* Stores all received packets */
 };
 
-inline BaseScheduler::BaseScheduler(std::shared_ptr<std::vector<packet_t>> buffer, std::shared_ptr<unsigned int> sys_tick):
-    system_tick(sys_tick), frame_log(json::array())
+inline BaseScheduler::BaseScheduler(BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick):
+    system_tick(sys_tick), buffer(buffer), frame_log(json::array())
 {
-    this->change_buffer_packet(buffer);
+    this->change_buffer_packet(buffer->buffer_packet);
 }
 
 inline void BaseScheduler::change_buffer_packet(std::shared_ptr<std::vector<packet_t>> buffer)

@@ -8,7 +8,7 @@
 class CHASPF_scheduler : public BaseScheduler
 {
 public:
-    CHASPF_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, std::shared_ptr<std::vector<packet_t>> buffer_packet, std::shared_ptr<unsigned int> sys_tick);
+    CHASPF_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
 
     unsigned int tx_power;
     unsigned int frequency;
