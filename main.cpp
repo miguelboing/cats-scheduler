@@ -79,7 +79,7 @@ int main(int argc, char* argv[])
             sched_cfg["tx_power"],
             sched_cfg["frequency"],
             sched_cfg["rx_period"],
-            buffer.buffer_packet,
+            &buffer,
             system_tick
         );
     }
@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
         scheduler = std::make_unique<EDF_scheduler>(
             sched_cfg["tx_power"],
             sched_cfg["frequency"],
-            buffer.buffer_packet,
+            &buffer,
             system_tick
         );
     }
@@ -97,7 +97,16 @@ int main(int argc, char* argv[])
         scheduler = std::make_unique<SPF_scheduler>(
             sched_cfg["tx_power"],
             sched_cfg["frequency"],
-            buffer.buffer_packet,
+            &buffer,
+            system_tick
+        );
+    }
+    else if (sched_type == "CATS")
+    {
+        scheduler = std::make_unique<CATS_scheduler>(
+            sched_cfg["frequency"],
+            sched_cfg["rx_period"],
+            &buffer,
             system_tick
         );
     }
@@ -282,6 +291,29 @@ int main(int argc, char* argv[])
                 {"success_rate_req", missed.success_rate_req}
             });
         }
+
+        /* Log dropped packets */
+        frame_entry["dropped_packets"] = json::array();
+        for (const auto& dropped : buffer.dropped_packets)
+        {
+            std::cout << "Dropped packet:"
+                      << " ID: "       << dropped.id
+                      << " ID Count: " << dropped.id_count
+                      << " Deadline: " << dropped.deadline
+                      << " Frames: "   << dropped.frames
+                      << " SR Req: "   << dropped.success_rate_req
+                      << std::endl;
+
+            frame_entry["dropped_packets"].push_back({
+                {"id",               dropped.id},
+                {"id_count",         dropped.id_count},
+                {"deadline",         dropped.deadline},
+                {"frames",           dropped.frames},
+                {"frame_count",      dropped.frame_count},
+                {"success_rate_req", dropped.success_rate_req}
+            });
+        }
+        buffer.dropped_packets.clear();
 
         /* Log FSMC status */
         std::cout << "\nFSMC STATUS" << std::endl;

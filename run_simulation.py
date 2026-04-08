@@ -15,6 +15,12 @@ BASE_SCHEDULER = {
     "rx_period": 5
 }
 
+BASE_CATS_SCHEDULER = {
+    "type": "CATS",
+    "frequency": 14074000,
+    "rx_period": 5
+}
+
 BASE_CHANNELS = [
     {
         "type": "sigmoid",
@@ -139,6 +145,58 @@ TESTS = [
                 }
             ]
         }
+    },
+    {
+        "name": "2_packets_relaxed_CATS",
+        "config": {
+            "simulation": { "duration": 500 },
+            "scheduler": BASE_CATS_SCHEDULER,
+            "channels": BASE_CHANNELS,
+            "packet_generators": [
+                {
+                    "type": "fixed_rate",
+                    "packets": [
+                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
+                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
+                    ]
+                }
+            ]
+        }
+    },
+    {
+        "name": "2_packets_very_relaxed_CATS",
+        "config": {
+            "simulation": { "duration": 500 },
+            "scheduler": BASE_CATS_SCHEDULER,
+            "channels": BASE_CHANNELS,
+            "packet_generators": [
+                {
+                    "type": "fixed_rate",
+                    "packets": [
+                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
+                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
+                    ]
+                }
+            ]
+        }
+    },
+    {
+        "name": "3_packets_stressed_CATS",
+        "config": {
+            "simulation": { "duration": 500 },
+            "scheduler": BASE_CATS_SCHEDULER,
+            "channels": BASE_CHANNELS,
+            "packet_generators": [
+                {
+                    "type": "fixed_rate",
+                    "packets": [
+                        { "id": 1, "relative_deadline": 3, "frames": 2, "success_rate": 0.95, "period": 3, "phase": 0 },
+                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.85, "period": 4, "phase": 1 },
+                        { "id": 3, "relative_deadline": 6, "frames": 3, "success_rate": 0.75, "period": 6, "phase": 2 }
+                    ]
+                }
+            ]
+        }
     }
 ]
 
@@ -188,6 +246,7 @@ class Frame:
     buffer: list[Packet]
     fsmc: list[FsmcStatus]
     missed_packets: list[Packet]
+    dropped_packets: list[Packet]
     transmission: Optional[Transmission] = None
     prediction: Optional[Prediction] = None
 
@@ -231,6 +290,7 @@ def parse_frame(d: dict) -> Frame:
         buffer          = [parse_packet(p) for p in d["buffer"]],
         fsmc            = [FsmcStatus(**ch) for ch in d["fsmc"]],
         missed_packets  = [parse_packet(p) for p in d["missed_packets"]],
+        dropped_packets = [parse_packet(p) for p in d.get("dropped_packets", [])],
         transmission    = transmission,
         prediction      = prediction
     )
@@ -258,8 +318,9 @@ def print_test_summary(test: dict):
     cfg = test["config"]
     print(f"\n── Test: {test['name']} ──")
     sched = cfg['scheduler']
+    tx_power_str = f"  tx_power={sched['tx_power']}W" if 'tx_power' in sched else ""
     rx_period_str = f"  rx_period={sched['rx_period']}" if 'rx_period' in sched else ""
-    print(f"   Scheduler  : {sched['type']}  tx_power={sched['tx_power']}W  freq={sched['frequency']}Hz{rx_period_str}")
+    print(f"   Scheduler  : {sched['type']}{tx_power_str}  freq={sched['frequency']}Hz{rx_period_str}")
     print(f"   Duration   : {cfg['simulation']['duration']} ticks")
     print(f"   Channels   : {', '.join(ch['name'] for ch in cfg['channels'])}")
     print(f"   Packets:")
@@ -285,13 +346,18 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
     tx_prob     = [f.transmission.probability if f.transmission else None for f in frames]
     tx_power    = [f.transmission.tx_power if f.transmission else 0 for f in frames]
     pred_prob   = [f.prediction.probs[0] if f.prediction else None for f in frames]
-    missed_ticks = [f.tick for f in frames if f.missed_packets]
+    missed_ticks  = [f.tick for f in frames if f.missed_packets]
+    dropped_ticks = [f.tick for f in frames if f.dropped_packets]
 
     cumulative_missed = []
-    total = 0
+    cumulative_dropped = []
+    total_missed = 0
+    total_dropped = 0
     for f in frames:
-        total += len(f.missed_packets)
-        cumulative_missed.append(total)
+        total_missed  += len(f.missed_packets)
+        total_dropped += len(f.dropped_packets)
+        cumulative_missed.append(total_missed)
+        cumulative_dropped.append(total_dropped)
 
     cumulative_generated = []
     seen = set()
@@ -323,17 +389,19 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
             per_id_success[pid].append(id_received[pid] / id_total[pid])
 
     return dict(
-        ticks               = ticks,
-        fsmc_state          = fsmc_state,
-        tx_prob             = tx_prob,
-        tx_power            = tx_power,
-        pred_prob           = pred_prob,
-        missed_ticks        = missed_ticks,
-        cumulative_missed   = cumulative_missed,
-        cumulative_generated= cumulative_generated,
-        per_id_ticks        = per_id_ticks,
-        per_id_success      = per_id_success,
-        per_id_req          = per_id_req,
+        ticks                = ticks,
+        fsmc_state           = fsmc_state,
+        tx_prob              = tx_prob,
+        tx_power             = tx_power,
+        pred_prob            = pred_prob,
+        missed_ticks         = missed_ticks,
+        dropped_ticks        = dropped_ticks,
+        cumulative_missed    = cumulative_missed,
+        cumulative_dropped   = cumulative_dropped,
+        cumulative_generated = cumulative_generated,
+        per_id_ticks         = per_id_ticks,
+        per_id_success       = per_id_success,
+        per_id_req           = per_id_req,
     )
 
 # ── Per-test plot ─────────────────────────────────────────────────────────────
@@ -380,17 +448,22 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax3.legend()
     ax3.grid(True, alpha=0.3)
 
-    # 4. Cumulative generated vs missed
+    # 4. Cumulative generated vs missed vs dropped
     ax4 = fig.add_subplot(gs[2, 0])
     ax4.plot(ticks, m["cumulative_generated"], color="steelblue", linewidth=1, label="Generated")
     ax4.plot(ticks, m["cumulative_missed"],    color="crimson",   linewidth=1, label="Missed")
+    ax4.plot(ticks, m["cumulative_dropped"],   color="darkorange",linewidth=1, label="Dropped")
     if m["missed_ticks"]:
         ax4.scatter(m["missed_ticks"],
                     [m["cumulative_missed"][ticks.index(t)] for t in m["missed_ticks"]],
                     color="crimson", s=15, zorder=5)
+    if m["dropped_ticks"]:
+        ax4.scatter(m["dropped_ticks"],
+                    [m["cumulative_dropped"][ticks.index(t)] for t in m["dropped_ticks"]],
+                    color="darkorange", s=15, zorder=5)
     ax4.set_ylabel("Cumulative packets")
     ax4.set_xlabel("Tick")
-    ax4.set_title("Cumulative Generated vs Missed Deadlines")
+    ax4.set_title("Cumulative Generated vs Missed vs Dropped")
     ax4.legend()
     ax4.grid(True, alpha=0.3)
 

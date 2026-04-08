@@ -7,7 +7,7 @@ CPP=g++
 LDFLAGS=
 
 .PHONY: all
-all: earliest_deadline_first_rule smaller_period_first_rule channel_aware_smaller_period_first_rule
+all: earliest_deadline_first_rule smaller_period_first_rule channel_aware_smaller_period_first_rule cats_rule
 
 earliest_deadline_first_rule: earliest_deadline_first/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C earliest_deadline_first
@@ -17,6 +17,9 @@ smaller_period_first_rule: smaller_period_first/Makefile
 
 channel_aware_smaller_period_first_rule: channel_aware_spf/Makefile
 	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C channel_aware_spf
+
+cats_rule: cats/Makefile
+	$(MAKE) CFLAGS="$(CFLAGS)" BUILD_DIR=$(BUILD_DIR) -C cats
 
 .PHONY: clean
 clean:
