@@ -388,6 +388,39 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
             per_id_ticks[pid].append(f.tick)
             per_id_success[pid].append(id_received[pid] / id_total[pid])
 
+    # Undelivered packets: instances where not all frame slots were successfully received.
+    # Track per (id, id_count, frame_count) whether that frame slot ever had received=True.
+    # This correctly handles retransmissions: a slot counts as delivered if received=True
+    # at least once, regardless of how many times it was transmitted.
+    instance_frames_needed = {}   # (id, id_count) -> frames
+    frame_slot_received    = set()  # (id, id_count, frame_count) that had received=True
+
+    for f in frames:
+        if f.transmission:
+            t   = f.transmission
+            key = (t.packet.id, t.packet.id_count)
+            instance_frames_needed[key] = t.packet.frames
+            if t.received:
+                frame_slot_received.add((t.packet.id, t.packet.id_count, t.packet.frame_count))
+
+    # Also register instances that were missed or dropped without any transmission
+    for f in frames:
+        for p in f.missed_packets + f.dropped_packets:
+            key = (p.id, p.id_count)
+            if key not in instance_frames_needed:
+                instance_frames_needed[key] = p.frames
+
+    undelivered_per_id = defaultdict(int)
+    generated_per_id   = defaultdict(int)
+    for (pid, pid_count), needed in instance_frames_needed.items():
+        generated_per_id[pid] += 1
+        slots_received = sum(
+            1 for slot in range(needed)
+            if (pid, pid_count, slot) in frame_slot_received
+        )
+        if slots_received < needed:
+            undelivered_per_id[pid] += 1
+
     return dict(
         ticks                = ticks,
         fsmc_state           = fsmc_state,
@@ -399,6 +432,8 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
         cumulative_missed    = cumulative_missed,
         cumulative_dropped   = cumulative_dropped,
         cumulative_generated = cumulative_generated,
+        undelivered_per_id   = undelivered_per_id,
+        generated_per_id     = generated_per_id,
         per_id_ticks         = per_id_ticks,
         per_id_success       = per_id_success,
         per_id_req           = per_id_req,
@@ -410,8 +445,8 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ticks  = m["ticks"]
     colors = plt.cm.tab10.colors
 
-    fig = plt.figure(figsize=(14, 12))
-    gs  = gridspec.GridSpec(3, 2, figure=fig, hspace=0.45, wspace=0.35)
+    fig = plt.figure(figsize=(14, 16))
+    gs  = gridspec.GridSpec(4, 2, figure=fig, hspace=0.45, wspace=0.35)
 
     # 1. FSMC state
     ax1 = fig.add_subplot(gs[0, :])
@@ -437,9 +472,12 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
 
     # 3. Cumulative success rate per packet
     ax3 = fig.add_subplot(gs[1, 1])
-    for i, pid in enumerate(sorted(m["per_id_ticks"].keys())):
+    for i, pid in enumerate(sorted(m["per_id_req"].keys())):
         color = colors[i % len(colors)]
-        ax3.plot(m["per_id_ticks"][pid], m["per_id_success"][pid], color=color, linewidth=1, label=f"id={pid}")
+        if m["per_id_ticks"][pid]:
+            ax3.plot(m["per_id_ticks"][pid], m["per_id_success"][pid], color=color, linewidth=1, label=f"id={pid}")
+        else:
+            ax3.scatter([], [], color=color, label=f"id={pid} (never scheduled)")
         ax3.axhline(y=m["per_id_req"][pid], color=color, linestyle="--", linewidth=0.8, label=f"req id={pid} ({m['per_id_req'][pid]})")
     ax3.set_ylabel("Success rate")
     ax3.set_xlabel("Tick")
@@ -449,7 +487,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax3.grid(True, alpha=0.3)
 
     # 4. Cumulative generated vs missed vs dropped
-    ax4 = fig.add_subplot(gs[2, 0])
+    ax4 = fig.add_subplot(gs[2, 0])  # row 2
     ax4.plot(ticks, m["cumulative_generated"], color="steelblue", linewidth=1, label="Generated")
     ax4.plot(ticks, m["cumulative_missed"],    color="crimson",   linewidth=1, label="Missed")
     ax4.plot(ticks, m["cumulative_dropped"],   color="darkorange",linewidth=1, label="Dropped")
@@ -467,18 +505,34 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax4.legend()
     ax4.grid(True, alpha=0.3)
 
-    # 5. Average power consumption (0W for IDLE/RX)
-    ax5 = fig.add_subplot(gs[2, 1])
+    # 5. Undelivered packets per packet ID (generated vs not fully received)
+    ax5 = fig.add_subplot(gs[3, :])
+    pids     = sorted(set(list(m["generated_per_id"].keys()) + list(m["per_id_req"].keys())))
+    x        = range(len(pids))
+    bar_w    = 0.35
+    gen_vals = [m["generated_per_id"].get(pid, 0)   for pid in pids]
+    und_vals = [m["undelivered_per_id"].get(pid, 0)  for pid in pids]
+    ax5.bar([i - bar_w/2 for i in x], gen_vals, bar_w, label="Generated",   color="steelblue", alpha=0.8)
+    ax5.bar([i + bar_w/2 for i in x], und_vals, bar_w, label="Undelivered", color="crimson",   alpha=0.8)
+    ax5.set_xticks(list(x))
+    ax5.set_xticklabels([f"id={pid}" for pid in pids])
+    ax5.set_ylabel("Packet instances")
+    ax5.set_title("Generated vs Undelivered Packet Instances (not all frames received)")
+    ax5.legend()
+    ax5.grid(True, alpha=0.3, axis="y")
+
+    # 6. Average power consumption (0W for IDLE/RX)
+    ax6 = fig.add_subplot(gs[2, 1])
     pw_vals = m["tx_power"]
     cumulative_avg = [sum(pw_vals[:i+1]) / (i+1) for i in range(len(pw_vals))]
     final_avg = cumulative_avg[-1] if cumulative_avg else 0
-    ax5.plot(ticks, pw_vals, color="steelblue", linewidth=0.6, alpha=0.4, label="Power per tick")
-    ax5.plot(ticks, cumulative_avg, color="orange", linewidth=1.2, label=f"Cumulative avg = {final_avg:.2f}W")
-    ax5.set_ylabel("Power (W)")
-    ax5.set_xlabel("Tick")
-    ax5.set_title("Power Consumption (0W = IDLE/RX)")
-    ax5.legend()
-    ax5.grid(True, alpha=0.3)
+    ax6.plot(ticks, pw_vals, color="steelblue", linewidth=0.6, alpha=0.4, label="Power per tick")
+    ax6.plot(ticks, cumulative_avg, color="orange", linewidth=1.2, label=f"Cumulative avg = {final_avg:.2f}W")
+    ax6.set_ylabel("Power (W)")
+    ax6.set_xlabel("Tick")
+    ax6.set_title("Power Consumption (0W = IDLE/RX)")
+    ax6.legend()
+    ax6.grid(True, alpha=0.3)
 
     plt.suptitle(f"{scheduler_type} — {test_name}", fontsize=13)
     out = f"results_{test_name}.png"
