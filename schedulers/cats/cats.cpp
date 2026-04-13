@@ -16,28 +16,33 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
     scheduled_frame_t scheduled_frame;
     scheduled_frame.frequency = this->frequency;
 
-    /* Check for packets to drop */
+    /* Check for packets to drop — use ceiling division for tx_slots to avoid premature drops */
     std::vector<std::pair<unsigned int, unsigned int>> to_drop;
     for (auto& pkt : *this->buffer_packet)
     {
+        if (pkt.deadline <= *(this->system_tick)) continue; /* already expired, check_deadlines handles it */
+        unsigned int ticks_available  = pkt.deadline - *(this->system_tick);
+        /* Ceiling division: floor((T * (P-1) + P-1) / P) */
+        unsigned int tx_slots         = (ticks_available * (this->rx_period - 1) + this->rx_period - 1) / this->rx_period;
         unsigned int remaining_frames = pkt.frames - pkt.frame_count;
-        unsigned int estimated_ticks  = remaining_frames * retransmissions_per_frame;
-        if (pkt.deadline < *(this->system_tick) + estimated_ticks)
+        if (tx_slots < remaining_frames * retransmissions_per_frame)
         {
             to_drop.emplace_back(pkt.id, pkt.id_count);
         }
     }
     for (auto& [id, id_count] : to_drop)
     {
+        accumulated_prob.erase(id_count);
         this->buffer->drop_packet(id, id_count);
     }
 
-    if (*(this->system_tick) % this->rx_period == 0) /* Check if it is time to listen to the channel */
+    /* Check if it is time to listen to the channel */
+    if (*(this->system_tick) % this->rx_period == 0)
     {
         scheduled_frame.radio_mode = RX_MODE;
         scheduled_frame.packet = nullptr;
     }
-    else /* If it is not try to schedule a packet */
+    else /* If it isn't, try to schedule a packet */
     {
         /* Find the packet with the earliest deadline */
         auto lowest_it = std::min_element(this->buffer_packet->begin(),
@@ -45,16 +50,23 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
                                           [](const packet_t& a, const packet_t& b) {
                                               return a.deadline < b.deadline;
                                           });
+
         if (lowest_it != this->buffer_packet->end())
         {
             const unsigned int power_levels[3] = {1, 10, 25};
-            double req = lowest_it->success_rate_req;
+            unsigned int key = lowest_it->id_count;
+            double req       = lowest_it->success_rate_req;
 
-            /* Pick smallest power that meets the success rate requirement */
+            /* Get or initialise accumulated probability for this packet instance */
+            double acc = (accumulated_prob.find(key) != accumulated_prob.end())
+                         ? accumulated_prob[key] : 0.0;
+
+            /* Pick smallest power whose accumulated probability would meet the requirement */
             int chosen_idx = -1;
             for (int i = 0; i < 3; i++)
             {
-                if (transmission_prob[i] >= req)
+                double acc_after = acc + transmission_prob[i] - acc * transmission_prob[i];
+                if (acc_after >= req)
                 {
                     chosen_idx = i;
                     break;
@@ -63,13 +75,17 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
 
             if (chosen_idx >= 0)
             {
-                /* A power level meets the requirement — transmit and remove from buffer */
+                /* Accumulated probability meets requirement — remove from buffer */
+                accumulated_prob[key] = acc + transmission_prob[chosen_idx]
+                                        - acc * transmission_prob[chosen_idx];
                 scheduled_frame.transmission_power = power_levels[chosen_idx];
                 scheduled_frame.remove_from_buffer = true;
+                accumulated_prob.erase(key);
             }
             else
             {
-                /* No power level meets the requirement — use max power and retransmit */
+                /* No power level meets requirement yet — use max power, keep retransmitting */
+                accumulated_prob[key] = acc + transmission_prob[2] - acc * transmission_prob[2];
                 scheduled_frame.transmission_power = power_levels[2];
                 scheduled_frame.remove_from_buffer = false;
             }
@@ -79,7 +95,7 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
         }
         else
         {
-            scheduled_frame.packet = nullptr; /* Means idle/no tranmission */
+            scheduled_frame.packet = nullptr;
             scheduled_frame.radio_mode = IDLE;
         }
     }
@@ -96,4 +112,3 @@ std::string CATS_scheduler::get_name() const
 {
     return "CATS Scheduler";
 }
-
