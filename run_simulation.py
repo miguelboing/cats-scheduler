@@ -10,7 +10,7 @@ import matplotlib.gridspec as gridspec
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 BASE_SCHEDULER = {
-    "type": "CHASPF",
+    "type": "CHARM",
     "tx_power": 10,
     "frequency": 14074000,
     "rx_period": 5
@@ -33,10 +33,10 @@ BASE_CHANNELS = [
 TESTS = [
     # ── Very relaxed ──────────────────────────────────────────────────────────
     {
-        "name": "2_packets_very_relaxed_SPF",
+        "name": "2_packets_very_relaxed_Rate_M",
         "config": {
             "simulation": { "duration": 500 },
-            "scheduler": { "type": "SPF", "tx_power": 10, "frequency": 14074000 },
+            "scheduler": { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 },
             "channels": BASE_CHANNELS,
             "packet_generators": [
                 {
@@ -50,7 +50,7 @@ TESTS = [
         }
     },
     {
-        "name": "2_packets_very_relaxed_CHASPF",
+        "name": "2_packets_very_relaxed_CHARM",
         "config": {
             "simulation": { "duration": 500 },
             "scheduler": BASE_SCHEDULER,
@@ -85,10 +85,10 @@ TESTS = [
     },
     # ── Relaxed ───────────────────────────────────────────────────────────────
     {
-        "name": "2_packets_relaxed_SPF",
+        "name": "2_packets_relaxed_Rate_M",
         "config": {
             "simulation": { "duration": 500 },
-            "scheduler": { "type": "SPF", "tx_power": 10, "frequency": 14074000 },
+            "scheduler": { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 },
             "channels": BASE_CHANNELS,
             "packet_generators": [
                 {
@@ -102,7 +102,7 @@ TESTS = [
         }
     },
     {
-        "name": "2_packets_relaxed_CHASPF",
+        "name": "2_packets_relaxed_CHARM",
         "config": {
             "simulation": { "duration": 500 },
             "scheduler": BASE_SCHEDULER,
@@ -137,10 +137,10 @@ TESTS = [
     },
     # ── Stressed ──────────────────────────────────────────────────────────────
     {
-        "name": "3_packets_stressed_SPF",
+        "name": "3_packets_stressed_Rate_M",
         "config": {
             "simulation": { "duration": 500 },
-            "scheduler": { "type": "SPF", "tx_power": 10, "frequency": 14074000 },
+            "scheduler": { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 },
             "channels": BASE_CHANNELS,
             "packet_generators": [
                 {
@@ -155,7 +155,7 @@ TESTS = [
         }
     },
     {
-        "name": "3_packets_stressed_CHASPF",
+        "name": "3_packets_stressed_CHARM",
         "config": {
             "simulation": { "duration": 500 },
             "scheduler": BASE_SCHEDULER,

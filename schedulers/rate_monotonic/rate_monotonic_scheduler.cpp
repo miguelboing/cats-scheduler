@@ -2,11 +2,11 @@
 #include <algorithm>
 #include <numeric>
 
-#include "spf_scheduler.hpp"
+#include "rate_monotonic_scheduler.hpp"
 
-SPF_scheduler::SPF_scheduler(unsigned int tx_power, unsigned int frequency, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency) {};
+RM_scheduler::RM_scheduler(unsigned int tx_power, unsigned int frequency, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency) {};
 
-scheduled_frame_t SPF_scheduler::do_schedule_frame(void)
+scheduled_frame_t RM_scheduler::do_schedule_frame(void)
 {
     scheduled_frame_t scheduled_frame;
     scheduled_frame.transmission_power = this->tx_power;
@@ -28,15 +28,13 @@ scheduled_frame_t SPF_scheduler::do_schedule_frame(void)
     }
     else
     {
-        scheduled_frame.packet = nullptr; /* Means idle/no tranmission */
+        scheduled_frame.packet = nullptr;
         scheduled_frame.radio_mode = IDLE;
     }
-
 
     return scheduled_frame;
 }
 
-std::string SPF_scheduler::get_name() const {
-    return "SPF";
+std::string RM_scheduler::get_name() const {
+    return "Rate_M";
 }
-

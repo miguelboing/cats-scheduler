@@ -2,11 +2,11 @@
 #include <algorithm>
 #include <numeric>
 
-#include "channel_aware_spf_scheduler.hpp"
+#include "charm_scheduler.hpp"
 
-CHASPF_scheduler::CHASPF_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency), rx_period(rx_period), transmission_prob(0) {};
+CHARM_scheduler::CHARM_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency), rx_period(rx_period), transmission_prob(0) {};
 
-scheduled_frame_t CHASPF_scheduler::do_schedule_frame(void)
+scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
 {
     scheduled_frame_t scheduled_frame;
     scheduled_frame.transmission_power = this->tx_power;
@@ -45,14 +45,13 @@ scheduled_frame_t CHASPF_scheduler::do_schedule_frame(void)
                 /* Calculate the accumulated prob after this transmission */
                 accumulated_prob[key] =
                     accumulated_prob[key] + this->transmission_prob - accumulated_prob[key] * this->transmission_prob;
-
             }
 
             /* Check if the prob is high enough to remove this frame from the buffer */
             if (accumulated_prob[key] >= lowest_it->success_rate_req)
             {
                 scheduled_frame.remove_from_buffer = true;
-                accumulated_prob.erase(key); /* requirement met, done with this packet */
+                accumulated_prob.erase(key);
             }
             else
             {
@@ -61,7 +60,7 @@ scheduled_frame_t CHASPF_scheduler::do_schedule_frame(void)
         }
         else
         {
-            scheduled_frame.packet = nullptr; /* Means idle/no tranmission */
+            scheduled_frame.packet = nullptr;
             scheduled_frame.radio_mode = IDLE;
         }
     }
@@ -69,12 +68,11 @@ scheduled_frame_t CHASPF_scheduler::do_schedule_frame(void)
     return scheduled_frame;
 }
 
-void CHASPF_scheduler::receive_prediction(const std::vector<double>& pred_probs)
+void CHARM_scheduler::receive_prediction(const std::vector<double>& pred_probs)
 {
     this->transmission_prob = pred_probs[0]; /* Only 10W predicted */
 }
 
-std::string CHASPF_scheduler::get_name() const {
-    return "Channel Aware SPF";
+std::string CHARM_scheduler::get_name() const {
+    return "CHARM";
 }
-

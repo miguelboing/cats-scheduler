@@ -5,10 +5,10 @@
 #include "schedulers/base_scheduler.hpp"
 #include <unordered_map>
 
-class CHASPF_scheduler : public BaseScheduler
+class CHARM_scheduler : public BaseScheduler
 {
 public:
-    CHASPF_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
+    CHARM_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
 
     unsigned int tx_power;
     unsigned int frequency;
@@ -23,4 +23,3 @@ public:
 
     std::string get_name() const override;
 };
-

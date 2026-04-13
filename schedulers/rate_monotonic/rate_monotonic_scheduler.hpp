@@ -4,10 +4,10 @@
 
 #include "schedulers/base_scheduler.hpp"
 
-class SPF_scheduler : public BaseScheduler
+class RM_scheduler : public BaseScheduler
 {
 public:
-    SPF_scheduler(unsigned int tx_power, unsigned int frequency, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
+    RM_scheduler(unsigned int tx_power, unsigned int frequency, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
     unsigned int tx_power;
     unsigned int frequency;
     scheduled_frame_t do_schedule_frame(void) override;
@@ -17,4 +17,3 @@ public:
 
     std::string get_name() const override;
 };
-

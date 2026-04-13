@@ -73,9 +73,9 @@ int main(int argc, char* argv[])
     const std::string sched_type = sched_cfg["type"];
 
     std::unique_ptr<BaseScheduler> scheduler;
-    if (sched_type == "CHASPF")
+    if (sched_type == "CHARM")
     {
-        scheduler = std::make_unique<CHASPF_scheduler>(
+        scheduler = std::make_unique<CHARM_scheduler>(
             sched_cfg["tx_power"],
             sched_cfg["frequency"],
             sched_cfg["rx_period"],
@@ -92,9 +92,9 @@ int main(int argc, char* argv[])
             system_tick
         );
     }
-    else if (sched_type == "SPF")
+    else if (sched_type == "Rate_M")
     {
-        scheduler = std::make_unique<SPF_scheduler>(
+        scheduler = std::make_unique<RM_scheduler>(
             sched_cfg["tx_power"],
             sched_cfg["frequency"],
             &buffer,
