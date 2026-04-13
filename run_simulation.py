@@ -30,18 +30,19 @@ BASE_CHANNELS = [
 ]
 
 TESTS = [
+    # ── Very relaxed ──────────────────────────────────────────────────────────
     {
-        "name": "2_packets_relaxed_CHASPF",
+        "name": "2_packets_very_relaxed_SPF",
         "config": {
             "simulation": { "duration": 500 },
-            "scheduler": BASE_SCHEDULER,
+            "scheduler": { "type": "SPF", "tx_power": 10, "frequency": 14074000 },
             "channels": BASE_CHANNELS,
             "packet_generators": [
                 {
                     "type": "fixed_rate",
                     "packets": [
-                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
+                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
+                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
                     ]
                 }
             ]
@@ -65,14 +66,28 @@ TESTS = [
         }
     },
     {
+        "name": "2_packets_very_relaxed_CATS",
+        "config": {
+            "simulation": { "duration": 500 },
+            "scheduler": BASE_CATS_SCHEDULER,
+            "channels": BASE_CHANNELS,
+            "packet_generators": [
+                {
+                    "type": "fixed_rate",
+                    "packets": [
+                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
+                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
+                    ]
+                }
+            ]
+        }
+    },
+    # ── Relaxed ───────────────────────────────────────────────────────────────
+    {
         "name": "2_packets_relaxed_SPF",
         "config": {
             "simulation": { "duration": 500 },
-            "scheduler": {
-                "type": "SPF",
-                "tx_power": 10,
-                "frequency": 14074000
-            },
+            "scheduler": { "type": "SPF", "tx_power": 10, "frequency": 14074000 },
             "channels": BASE_CHANNELS,
             "packet_generators": [
                 {
@@ -86,35 +101,45 @@ TESTS = [
         }
     },
     {
-        "name": "2_packets_very_relaxed_SPF",
+        "name": "2_packets_relaxed_CHASPF",
         "config": {
             "simulation": { "duration": 500 },
-            "scheduler": {
-                "type": "SPF",
-                "tx_power": 10,
-                "frequency": 14074000
-            },
+            "scheduler": BASE_SCHEDULER,
             "channels": BASE_CHANNELS,
             "packet_generators": [
                 {
                     "type": "fixed_rate",
                     "packets": [
-                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
-                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
+                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
+                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
                     ]
                 }
             ]
         }
     },
     {
+        "name": "2_packets_relaxed_CATS",
+        "config": {
+            "simulation": { "duration": 500 },
+            "scheduler": BASE_CATS_SCHEDULER,
+            "channels": BASE_CHANNELS,
+            "packet_generators": [
+                {
+                    "type": "fixed_rate",
+                    "packets": [
+                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
+                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
+                    ]
+                }
+            ]
+        }
+    },
+    # ── Stressed ──────────────────────────────────────────────────────────────
+    {
         "name": "3_packets_stressed_SPF",
         "config": {
             "simulation": { "duration": 500 },
-            "scheduler": {
-                "type": "SPF",
-                "tx_power": 10,
-                "frequency": 14074000
-            },
+            "scheduler": { "type": "SPF", "tx_power": 10, "frequency": 14074000 },
             "channels": BASE_CHANNELS,
             "packet_generators": [
                 {
@@ -141,40 +166,6 @@ TESTS = [
                         { "id": 1, "relative_deadline": 3, "frames": 2, "success_rate": 0.95, "period": 3, "phase": 0 },
                         { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.85, "period": 4, "phase": 1 },
                         { "id": 3, "relative_deadline": 6, "frames": 3, "success_rate": 0.75, "period": 6, "phase": 2 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "2_packets_relaxed_CATS",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_CATS_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "2_packets_very_relaxed_CATS",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_CATS_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
-                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
                     ]
                 }
             ]
