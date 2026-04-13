@@ -1,4 +1,5 @@
 import json
+import sys
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
@@ -412,6 +413,8 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
         if slots_received < needed:
             undelivered_per_id[pid] += 1
 
+    total_transmissions = sum(1 for f in frames if f.transmission)
+
     return dict(
         ticks                = ticks,
         fsmc_state           = fsmc_state,
@@ -425,6 +428,7 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
         cumulative_generated = cumulative_generated,
         undelivered_per_id   = undelivered_per_id,
         generated_per_id     = generated_per_id,
+        total_transmissions  = total_transmissions,
         per_id_ticks         = per_id_ticks,
         per_id_success       = per_id_success,
         per_id_req           = per_id_req,
@@ -608,13 +612,18 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
 
     pids = sorted(metrics["per_id_req"].keys())
 
-    col_w = [6, 20, 16, 12, 12]
+    # Build per-id req lookup from config
+    id_req = {p["id"]: p["success_rate"] for gen in config["packet_generators"] for p in gen["packets"]}
+
+    col_w = [6, 20, 16, 18, 18, 12, 12]
     header = (
         f"{'ID':<{col_w[0]}}"
         f"{'Undelivered':>{col_w[1]}}"
         f"{'Generated':>{col_w[2]}}"
-        f"{'Avg Power (W)':>{col_w[3]}}"
-        f"{'Total Power (W)':>{col_w[4]}}"
+        f"{'Success Ratio':>{col_w[3]}}"
+        f"{'Success Req':>{col_w[4]}}"
+        f"{'Avg Power (W)':>{col_w[5]}}"
+        f"{'Total Power (W)':>{col_w[6]}}"
     )
     sep = "-" * sum(col_w)
 
@@ -625,14 +634,18 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
     print(sep)
 
     for pid in pids:
-        undelivered = metrics["undelivered_per_id"].get(pid, 0)
-        generated   = metrics["generated_per_id"].get(pid, 0)
+        undelivered   = metrics["undelivered_per_id"].get(pid, 0)
+        generated     = metrics["generated_per_id"].get(pid, 0)
+        success_ratio = (1 - undelivered / generated) if generated > 0 else 0.0
+        req           = id_req.get(pid, float("nan"))
         print(
             f"{pid:<{col_w[0]}}"
-            f"{undelivered:>{col_w[1]}}"
-            f"{generated:>{col_w[2]}}"
-            f"{average_power:>{col_w[3]}.3f}"
-            f"{total_power:>{col_w[4]}.1f}"
+            f"{undelivered:>{col_w[1]}.2f}"
+            f"{generated:>{col_w[2]}.2f}"
+            f"{success_ratio:>{col_w[3]}.2f}"
+            f"{req:>{col_w[4]}.2f}"
+            f"{average_power:>{col_w[5]}.2f}"
+            f"{total_power:>{col_w[6]}.2f}"
         )
 
     print(sep)
@@ -648,6 +661,9 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
         f"{'Test':<{name_w}}"
         f"{'Undelivered':>{col_w}}"
         f"{'Generated':>{col_w}}"
+        f"{'Dropped':>{col_w}}"
+        f"{'Transmissions':>{col_w}}"
+        f"{'Met Criteria':>{col_w}}"
         f"{'Avg Pwr (W)':>{col_w}}"
         f"{'Tot Pwr (W)':>{col_w}}"
     )
@@ -665,25 +681,95 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
         total_power   = sum(tx_power)
         total_undel   = sum(m["undelivered_per_id"].values())
         total_gen     = sum(m["generated_per_id"].values())
+        total_dropped = sum(m["cumulative_dropped"][-1:] or [0])
+
+        pids     = sorted(m["per_id_req"].keys())
+        met      = sum(
+            1 for pid in pids
+            if m["generated_per_id"].get(pid, 0) > 0
+            and (1 - m["undelivered_per_id"].get(pid, 0) / m["generated_per_id"][pid]) >= m["per_id_req"][pid]
+        )
+        criteria = f"{met}/{len(pids)}"
 
         print(
             f"{name:<{name_w}}"
-            f"{total_undel:>{col_w}}"
-            f"{total_gen:>{col_w}}"
-            f"{avg_power:>{col_w}.3f}"
-            f"{total_power:>{col_w}.1f}"
+            f"{total_undel:>{col_w}.2f}"
+            f"{total_gen:>{col_w}.2f}"
+            f"{total_dropped:>{col_w}.2f}"
+            f"{m['total_transmissions']:>{col_w}.2f}"
+            f"{criteria:>{col_w}}"
+            f"{avg_power:>{col_w}.2f}"
+            f"{total_power:>{col_w}.2f}"
         )
 
     print(sep)
 
+# ── Silent runner (used in multi-run mode) ────────────────────────────────────
+
+def _run_test_silent(test: dict) -> list[Frame]:
+    write_config(test["config"], CONFIG_FILE)
+    run_simulation(BINARY, CONFIG_FILE)
+    return load_results(LOG_FILE)
+
+# ── Multi-run averaging ───────────────────────────────────────────────────────
+
+def average_metrics(runs: list[dict]) -> dict:
+    """Average scalar table metrics across runs; use last run for plot data."""
+    n    = len(runs)
+    last = runs[-1]
+
+    # Collect all pids seen across runs
+    all_pids = set()
+    for m in runs:
+        all_pids |= set(m["undelivered_per_id"].keys())
+        all_pids |= set(m["generated_per_id"].keys())
+
+    undelivered_per_id = {
+        pid: sum(m["undelivered_per_id"].get(pid, 0) for m in runs) / n
+        for pid in all_pids
+    }
+    generated_per_id = {
+        pid: sum(m["generated_per_id"].get(pid, 0) for m in runs) / n
+        for pid in all_pids
+    }
+    total_transmissions = sum(m["total_transmissions"] for m in runs) / n
+    total_dropped_final = sum(m["cumulative_dropped"][-1] if m["cumulative_dropped"] else 0 for m in runs) / n
+
+    # For power: average the per-run tx_power lists element-wise (same length assumed)
+    avg_tx_power = [
+        sum(m["tx_power"][i] for m in runs) / n
+        for i in range(len(last["tx_power"]))
+    ]
+
+    averaged = dict(last)  # copy plot data from last run
+    averaged["undelivered_per_id"]  = undelivered_per_id
+    averaged["generated_per_id"]    = generated_per_id
+    averaged["total_transmissions"] = total_transmissions
+    averaged["tx_power"]            = avg_tx_power
+    # Patch cumulative_dropped final value used in comparison table
+    averaged["cumulative_dropped"]  = last["cumulative_dropped"][:-1] + [total_dropped_final]
+
+    return averaged
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    n_runs = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    print(f"Running {n_runs} simulation(s) per test")
+
     all_results = []
 
     for test in TESTS:
-        frames  = run_test(test)
-        metrics = extract_metrics(frames, test["config"])
+        run_metrics = []
+        for run in range(n_runs):
+            if n_runs > 1:
+                print(f"  [{test['name']}] run {run + 1}/{n_runs}", end="\r")
+            frames = run_test(test) if n_runs == 1 else _run_test_silent(test)
+            run_metrics.append(extract_metrics(frames, test["config"]))
+        if n_runs > 1:
+            print()
+
+        metrics        = average_metrics(run_metrics) if n_runs > 1 else run_metrics[0]
         scheduler_type = test["config"]["scheduler"]["type"]
         plot_test(metrics, test["name"], scheduler_type)
         print_summary_table(test["name"], metrics, test["config"])
