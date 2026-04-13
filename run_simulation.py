@@ -1,6 +1,9 @@
 import json
 import sys
+import os
 import subprocess
+import tempfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Optional
 from collections import defaultdict
@@ -704,12 +707,27 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
 
     print(sep)
 
-# ── Silent runner (used in multi-run mode) ────────────────────────────────────
+# ── Parallel-safe single run ──────────────────────────────────────────────────
 
-def _run_test_silent(test: dict) -> list[Frame]:
-    write_config(test["config"], CONFIG_FILE)
-    run_simulation(BINARY, CONFIG_FILE)
-    return load_results(LOG_FILE)
+def _run_single(args: tuple) -> dict:
+    """Run one simulation in a temp file pair and return extracted metrics.
+    Designed to be called from a worker process."""
+    config, run_id = args
+    cfg_file = f"/tmp/sim_config_{os.getpid()}_{run_id}.json"
+    log_file = f"/tmp/sim_log_{os.getpid()}_{run_id}.json"
+    try:
+        with open(cfg_file, "w") as f:
+            json.dump(config, f)
+        subprocess.run([BINARY, cfg_file, log_file],
+                       capture_output=True, check=False)
+        frames = load_results(log_file)
+        return extract_metrics(frames, config)
+    finally:
+        for path in (cfg_file, log_file):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
 
 # ── Multi-run averaging ───────────────────────────────────────────────────────
 
@@ -754,24 +772,32 @@ def average_metrics(runs: list[dict]) -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    n_runs = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    print(f"Running {n_runs} simulation(s) per test")
+    n_runs   = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    n_workers = os.cpu_count() or 1
+    print(f"Running {n_runs} simulation(s) per test ({n_workers} workers)")
 
     all_results = []
 
     for test in TESTS:
-        run_metrics = []
-        for run in range(n_runs):
-            if n_runs > 1:
-                print(f"  [{test['name']}] run {run + 1}/{n_runs}", end="\r")
-            frames = run_test(test) if n_runs == 1 else _run_test_silent(test)
-            run_metrics.append(extract_metrics(frames, test["config"]))
-        if n_runs > 1:
+        if n_runs == 1:
+            frames     = run_test(test)
+            run_metrics = [extract_metrics(frames, test["config"])]
+        else:
+            print(f"  [{test['name']}] dispatching {n_runs} runs ...", flush=True)
+            args = [(test["config"], i) for i in range(n_runs)]
+            run_metrics = [None] * n_runs
+            with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                futures = {executor.submit(_run_single, a): i for i, a in enumerate(args)}
+                done = 0
+                for future in as_completed(futures):
+                    run_metrics[futures[future]] = future.result()
+                    done += 1
+                    print(f"  [{test['name']}] {done}/{n_runs} done", end="\r", flush=True)
             print()
 
         metrics        = average_metrics(run_metrics) if n_runs > 1 else run_metrics[0]
         scheduler_type = test["config"]["scheduler"]["type"]
-        plot_test(metrics, test["name"], scheduler_type)
+        plot_test(run_metrics[0], test["name"], scheduler_type)
         print_summary_table(test["name"], metrics, test["config"])
         all_results.append((test["name"], metrics))
 

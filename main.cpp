@@ -22,6 +22,7 @@ using json = nlohmann::json;
 int main(int argc, char* argv[])
 {
     const std::string config_file = (argc > 1) ? argv[1] : "simulation_config.json";
+    const std::string log_file    = (argc > 2) ? argv[2] : "simulation_log.json";
     std::ifstream f(config_file);
     if (!f.is_open())
     {
@@ -347,7 +348,7 @@ int main(int argc, char* argv[])
     }
 
     /* Save simulation log */
-    std::ofstream sim_log_file("simulation_log.json");
+    std::ofstream sim_log_file(log_file);
     sim_log_file << simulation_log.dump(4);
 
     BasePacketGenerator::save_to_file(spawn_log, "generated_packets.json");
