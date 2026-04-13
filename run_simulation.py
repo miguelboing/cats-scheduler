@@ -537,7 +537,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     plt.suptitle(f"{scheduler_type} — {test_name}", fontsize=13)
     out = f"results_{test_name}.png"
     plt.savefig(out, dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close()
     print(f"Plot saved to {out}")
 
 # ── Comparison plot ───────────────────────────────────────────────────────────
@@ -605,8 +605,85 @@ def plot_comparison(results: list[tuple[str, dict]]):
 
     plt.suptitle("Test Comparison", fontsize=13)
     plt.savefig("results_comparison.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close()
     print("Comparison plot saved to results_comparison.png")
+
+# ── Summary table ─────────────────────────────────────────────────────────────
+
+def print_summary_table(test_name: str, metrics: dict, config: dict):
+    tx_power      = metrics["tx_power"]
+    total_power   = sum(tx_power)
+    average_power = total_power / len(tx_power) if tx_power else 0.0
+
+    pids = sorted(metrics["per_id_req"].keys())
+
+    col_w = [6, 20, 16, 12, 12]
+    header = (
+        f"{'ID':<{col_w[0]}}"
+        f"{'Undelivered':>{col_w[1]}}"
+        f"{'Generated':>{col_w[2]}}"
+        f"{'Avg Power (W)':>{col_w[3]}}"
+        f"{'Total Power (W)':>{col_w[4]}}"
+    )
+    sep = "-" * sum(col_w)
+
+    print(f"\n{'═' * sum(col_w)}")
+    print(f"  Summary: {test_name}")
+    print(f"{'═' * sum(col_w)}")
+    print(header)
+    print(sep)
+
+    for pid in pids:
+        undelivered = metrics["undelivered_per_id"].get(pid, 0)
+        generated   = metrics["generated_per_id"].get(pid, 0)
+        print(
+            f"{pid:<{col_w[0]}}"
+            f"{undelivered:>{col_w[1]}}"
+            f"{generated:>{col_w[2]}}"
+            f"{average_power:>{col_w[3]}.3f}"
+            f"{total_power:>{col_w[4]}.1f}"
+        )
+
+    print(sep)
+    print(f"  (Avg/Total power are per-simulation, shared across all packet IDs)")
+
+# ── Comparison table ──────────────────────────────────────────────────────────
+
+def print_comparison_table(all_results: list[tuple[str, dict]]):
+    name_w = max(len(name) for name, _ in all_results) + 2
+    col_w  = 16
+
+    header = (
+        f"{'Test':<{name_w}}"
+        f"{'Undelivered':>{col_w}}"
+        f"{'Generated':>{col_w}}"
+        f"{'Avg Pwr (W)':>{col_w}}"
+        f"{'Tot Pwr (W)':>{col_w}}"
+    )
+    sep = "-" * len(header)
+
+    print(f"\n{'═' * len(header)}")
+    print("  Scheduler Comparison")
+    print(f"{'═' * len(header)}")
+    print(header)
+    print(sep)
+
+    for name, m in all_results:
+        tx_power      = m["tx_power"]
+        avg_power     = sum(tx_power) / len(tx_power) if tx_power else 0.0
+        total_power   = sum(tx_power)
+        total_undel   = sum(m["undelivered_per_id"].values())
+        total_gen     = sum(m["generated_per_id"].values())
+
+        print(
+            f"{name:<{name_w}}"
+            f"{total_undel:>{col_w}}"
+            f"{total_gen:>{col_w}}"
+            f"{avg_power:>{col_w}.3f}"
+            f"{total_power:>{col_w}.1f}"
+        )
+
+    print(sep)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -618,8 +695,10 @@ if __name__ == "__main__":
         metrics = extract_metrics(frames, test["config"])
         scheduler_type = test["config"]["scheduler"]["type"]
         plot_test(metrics, test["name"], scheduler_type)
+        print_summary_table(test["name"], metrics, test["config"])
         all_results.append((test["name"], metrics))
 
     if len(all_results) > 1:
         plot_comparison(all_results)
+        print_comparison_table(all_results)
 
