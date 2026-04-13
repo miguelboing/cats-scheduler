@@ -47,7 +47,34 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
                                           });
         if (lowest_it != this->buffer_packet->end())
         {
-            scheduled_frame.packet = &(*lowest_it);
+            const unsigned int power_levels[3] = {1, 10, 25};
+            double req = lowest_it->success_rate_req;
+
+            /* Pick smallest power that meets the success rate requirement */
+            int chosen_idx = -1;
+            for (int i = 0; i < 3; i++)
+            {
+                if (transmission_prob[i] >= req)
+                {
+                    chosen_idx = i;
+                    break;
+                }
+            }
+
+            if (chosen_idx >= 0)
+            {
+                /* A power level meets the requirement — transmit and remove from buffer */
+                scheduled_frame.transmission_power = power_levels[chosen_idx];
+                scheduled_frame.remove_from_buffer = true;
+            }
+            else
+            {
+                /* No power level meets the requirement — use max power and retransmit */
+                scheduled_frame.transmission_power = power_levels[2];
+                scheduled_frame.remove_from_buffer = false;
+            }
+
+            scheduled_frame.packet     = &(*lowest_it);
             scheduled_frame.radio_mode = TX_MODE;
         }
         else
