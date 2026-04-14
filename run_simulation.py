@@ -707,6 +707,48 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
 
     print(sep)
 
+# ── Success criteria table ────────────────────────────────────────────────────
+
+def print_success_criteria_table(all_results: list[tuple[str, dict]]):
+    name_w = max(len(name) for name, _ in all_results) + 2
+    id_w   = 6
+    col_w  = 18
+
+    header = (
+        f"{'Test':<{name_w}}"
+        f"{'ID':<{id_w}}"
+        f"{'Success Ratio':>{col_w}}"
+        f"{'Success Req':>{col_w}}"
+        f"{'Delta':>{col_w}}"
+        f"{'Met':>{col_w}}"
+    )
+    sep = "-" * len(header)
+
+    print(f"\n{'═' * len(header)}")
+    print("  Success Criteria per Test/ID")
+    print(f"{'═' * len(header)}")
+    print(header)
+    print(sep)
+
+    for name, m in all_results:
+        pids = sorted(m["per_id_req"].keys())
+        for pid in pids:
+            generated     = m["generated_per_id"].get(pid, 0)
+            undelivered   = m["undelivered_per_id"].get(pid, 0)
+            success_ratio = (1 - undelivered / generated) if generated > 0 else 0.0
+            req           = m["per_id_req"][pid]
+            delta         = success_ratio - req
+            met           = "YES" if success_ratio >= req else "NO"
+            print(
+                f"{name:<{name_w}}"
+                f"{pid:<{id_w}}"
+                f"{success_ratio:>{col_w}.2f}"
+                f"{req:>{col_w}.2f}"
+                f"{delta:>+{col_w}.2f}"
+                f"{met:>{col_w}}"
+            )
+        print(sep)
+
 # ── Parallel-safe single run ──────────────────────────────────────────────────
 
 def _run_single(args: tuple) -> dict:
@@ -804,4 +846,5 @@ if __name__ == "__main__":
     if len(all_results) > 1:
         plot_comparison(all_results)
         print_comparison_table(all_results)
+        print_success_criteria_table(all_results)
 
