@@ -18,7 +18,7 @@ public:
     int get_fsmc_state(void);
 
     std::vector<markov_state_t> fsmc;
-    kovian::MarkovChain<4> mc;
+    kovian::MarkovChain<6> mc;
 
 private:
     std::default_random_engine generator;
