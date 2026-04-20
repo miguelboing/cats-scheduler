@@ -1,6 +1,8 @@
 import json
 import sys
 import os
+import copy
+import random
 import subprocess
 import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -9,6 +11,54 @@ from typing import Optional
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+
+# ── UUniFast task-set generator ───────────────────────────────────────────────
+
+def uunifast(n: int, U: float) -> list[float]:
+    """Bini & Buttazzo UUniFast: returns n utilizations in (0,1) summing to U,
+    uniformly distributed on the simplex."""
+    utils = []
+    s = U
+    for i in range(1, n):
+        nxt = s * random.random() ** (1.0 / (n - i))
+        utils.append(s - nxt)
+        s = nxt
+    utils.append(s)
+    return utils
+
+def uunifast_packets(n: int, U: float, d_min: int, d_max: int,
+                     sr_min: float, sr_max: float) -> list[dict]:
+    """Turn a UUniFast draw into a fixed_rate packet list.
+    Each task gets an independent deadline D ~ uniform_int[d_min, d_max] and
+    success-rate requirement sr ~ uniform[sr_min, sr_max]. Since D=T,
+    period=deadline=D. Ci = max(1, round(ui * D))."""
+    utils = uunifast(n, U)
+    packets = []
+    for i, u in enumerate(utils):
+        D = random.randint(d_min, d_max)
+        packets.append({
+            "id":                i + 1,
+            "relative_deadline": D,
+            "frames":            max(1, round(u * D)),
+            "success_rate":      round(random.uniform(sr_min, sr_max), 2),
+            "period":            D,
+            "phase":             0,
+        })
+    return packets
+
+def make_config(test: dict) -> dict:
+    """Resolve a test definition into a concrete simulator config. If a
+    'uunifast' spec is present, a fresh packet_generators block is drawn."""
+    config = copy.deepcopy(test["config"])
+    if "uunifast" in test:
+        spec = test["uunifast"]
+        config["packet_generators"] = [{
+            "type":    "fixed_rate",
+            "packets": uunifast_packets(spec["n"], spec["U"],
+                                        spec["d_min"],  spec["d_max"],
+                                        spec["sr_min"], spec["sr_max"]),
+        }]
+    return config
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -33,166 +83,40 @@ BASE_CHANNELS = [
     }
 ]
 
+BASE_SIM = { "duration": 500 }
+
+# Each scenario: (name, U, n, d_min, d_max, sr_min, sr_max)
+SCENARIOS = [
+    ("very_relaxed", 0.30, 2,  5, 10, 0.50, 0.70),
+    ("relaxed",      0.60, 2,  5, 20, 0.70, 0.90),
+    ("stressed",     0.90, 3,  5, 30, 0.75, 0.95),
+]
+
+SCHEDULERS = [
+    ("Rate_M", { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 }),
+    ("CHARM",  BASE_SCHEDULER),
+    ("CATS",   BASE_CATS_SCHEDULER),
+]
+
 TESTS = [
-    # ── Very relaxed ──────────────────────────────────────────────────────────
     {
-        "name": "2_packets_very_relaxed_Rate_M",
+        "name": f"{scen_name}_{sch_name}",
         "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 },
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
-                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "2_packets_very_relaxed_CHARM",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
-                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "2_packets_very_relaxed_CATS",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_CATS_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 10, "frames": 2, "success_rate": 0.6, "period": 10, "phase": 0 },
-                        { "id": 2, "relative_deadline": 8,  "frames": 1, "success_rate": 0.5, "period": 8,  "phase": 0 }
-                    ]
-                }
-            ]
-        }
-    },
-    # ── Relaxed ───────────────────────────────────────────────────────────────
-    {
-        "name": "2_packets_relaxed_Rate_M",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 },
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "2_packets_relaxed_CHARM",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "2_packets_relaxed_CATS",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_CATS_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 5, "frames": 2, "success_rate": 0.9, "period": 5, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.7, "period": 4, "phase": 0 }
-                    ]
-                }
-            ]
-        }
-    },
-    # ── Stressed ──────────────────────────────────────────────────────────────
-    {
-        "name": "3_packets_stressed_Rate_M",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 },
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 3, "frames": 2, "success_rate": 0.95, "period": 3, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.85, "period": 4, "phase": 1 },
-                        { "id": 3, "relative_deadline": 6, "frames": 3, "success_rate": 0.75, "period": 6, "phase": 2 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "3_packets_stressed_CHARM",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 3, "frames": 2, "success_rate": 0.95, "period": 3, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.85, "period": 4, "phase": 1 },
-                        { "id": 3, "relative_deadline": 6, "frames": 3, "success_rate": 0.75, "period": 6, "phase": 2 }
-                    ]
-                }
-            ]
-        }
-    },
-    {
-        "name": "3_packets_stressed_CATS",
-        "config": {
-            "simulation": { "duration": 500 },
-            "scheduler": BASE_CATS_SCHEDULER,
-            "channels": BASE_CHANNELS,
-            "packet_generators": [
-                {
-                    "type": "fixed_rate",
-                    "packets": [
-                        { "id": 1, "relative_deadline": 3, "frames": 2, "success_rate": 0.95, "period": 3, "phase": 0 },
-                        { "id": 2, "relative_deadline": 4, "frames": 1, "success_rate": 0.85, "period": 4, "phase": 1 },
-                        { "id": 3, "relative_deadline": 6, "frames": 3, "success_rate": 0.75, "period": 6, "phase": 2 }
-                    ]
-                }
-            ]
-        }
+            "simulation": BASE_SIM,
+            "scheduler":  scheduler,
+            "channels":   BASE_CHANNELS,
+        },
+        "uunifast": {
+            "U":      U,
+            "n":      n,
+            "d_min":  d_min,
+            "d_max":  d_max,
+            "sr_min": sr_min,
+            "sr_max": sr_max,
+        },
     }
+    for scen_name, U, n, d_min, d_max, sr_min, sr_max in SCENARIOS
+    for sch_name, scheduler in SCHEDULERS
 ]
 
 CONFIG_FILE = "simulation_config.json"
@@ -324,13 +248,14 @@ def print_test_summary(test: dict):
             print(f"     id={p['id']}  period={p['period']}  deadline={p['relative_deadline']}"
                   f"  frames={p['frames']}  success_rate={p['success_rate']}  phase={p['phase']}")
 
-def run_test(test: dict) -> list[Frame]:
-    print_test_summary(test)
-    write_config(test["config"], CONFIG_FILE)
+def run_test(test: dict) -> tuple[list["Frame"], dict]:
+    config = make_config(test)
+    print_test_summary({ "name": test["name"], "config": config })
+    write_config(config, CONFIG_FILE)
     run_simulation(BINARY, CONFIG_FILE)
     frames = load_results(LOG_FILE)
     print(f"   Done — {len(frames)} frames loaded")
-    return frames
+    return frames, config
 
 # ── Metrics extraction ────────────────────────────────────────────────────────
 
@@ -759,8 +684,10 @@ def print_success_criteria_table(all_results: list[tuple[str, dict]]):
 
 def _run_single(args: tuple) -> dict:
     """Run one simulation in a temp file pair and return extracted metrics.
-    Designed to be called from a worker process."""
-    config, run_id = args
+    Designed to be called from a worker process. Resolves UUniFast specs
+    fresh per call so rounding drift averages over runs."""
+    test, run_id = args
+    config = make_config(test)
     cfg_file = f"/tmp/sim_config_{os.getpid()}_{run_id}.json"
     log_file = f"/tmp/sim_log_{os.getpid()}_{run_id}.json"
     try:
@@ -814,9 +741,17 @@ def average_metrics(runs: list[dict]) -> dict:
         for i in range(len(last["tx_power"]))
     ]
 
+    # Success-rate requirements vary per run now (drawn from sr_min..sr_max),
+    # so average them per-id alongside the other metrics.
+    per_id_req = {
+        pid: sum(m["per_id_req"].get(pid, 0) for m in runs) / n
+        for pid in all_pids
+    }
+
     averaged = dict(last)  # copy plot data from last run
     averaged["undelivered_per_id"]  = undelivered_per_id
     averaged["generated_per_id"]    = generated_per_id
+    averaged["per_id_req"]          = per_id_req
     averaged["total_transmissions"] = total_transmissions
     averaged["tx_power"]            = avg_tx_power
     # Patch cumulative_dropped final value used in comparison table
@@ -835,11 +770,11 @@ if __name__ == "__main__":
 
     for test in TESTS:
         if n_runs == 1:
-            frames     = run_test(test)
-            run_metrics = [extract_metrics(frames, test["config"])]
+            frames, display_config = run_test(test)
+            run_metrics = [extract_metrics(frames, display_config)]
         else:
             print(f"  [{test['name']}] dispatching {n_runs} runs ...", flush=True)
-            args = [(test["config"], i) for i in range(n_runs)]
+            args = [(test, i) for i in range(n_runs)]
             run_metrics = [None] * n_runs
             with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 futures = {executor.submit(_run_single, a): i for i, a in enumerate(args)}
@@ -849,11 +784,12 @@ if __name__ == "__main__":
                     done += 1
                     print(f"  [{test['name']}] {done}/{n_runs} done", end="\r", flush=True)
             print()
+            display_config = make_config(test)
 
         metrics        = average_metrics(run_metrics) if n_runs > 1 else run_metrics[0]
         scheduler_type = test["config"]["scheduler"]["type"]
         plot_test(run_metrics[0], test["name"], scheduler_type)
-        print_summary_table(test["name"], metrics, test["config"])
+        print_summary_table(test["name"], metrics, display_config)
         all_results.append((test["name"], metrics))
 
     if len(all_results) > 1:
