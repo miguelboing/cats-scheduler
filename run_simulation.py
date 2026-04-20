@@ -446,13 +446,16 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     fig = plt.figure(figsize=(14, 16))
     gs  = gridspec.GridSpec(4, 2, figure=fig, hspace=0.45, wspace=0.35)
 
-    # 1. FSMC state
+    # 1. FSMC state (aggregate paired states to channel quality: 0=best .. 3=worst)
+    quality = [(6 - s) if s is not None and s > 3 else s for s in m["fsmc_state"]]
     ax1 = fig.add_subplot(gs[0, :])
-    ax1.plot(ticks, m["fsmc_state"], color="steelblue", linewidth=0.8)
-    ax1.set_ylabel("State")
+    ax1.plot(ticks, quality, color="steelblue", linewidth=0.8)
+    ax1.set_ylabel("Channel Quality")
     ax1.set_xlabel("Tick")
     ax1.set_title("FSMC State Evolution")
     ax1.set_yticks(range(4))
+    ax1.set_yticklabels(["Best", "2nd Best", "2nd Worst", "Worst"])
+    ax1.invert_yaxis()
     ax1.grid(True, alpha=0.3)
 
     # 2. Actual vs predicted probability
@@ -590,14 +593,17 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax3.legend()
     ax3.grid(True, alpha=0.3, axis="y")
 
-    # 4. FSMC state evolution per test
+    # 4. FSMC state evolution per test (aggregated to channel quality)
     ax4 = fig.add_subplot(gs[1, 1])
     for i, (name, m) in enumerate(results):
-        ax4.plot(m["ticks"], m["fsmc_state"], color=colors[i], linewidth=0.6, alpha=0.8, label=name)
-    ax4.set_ylabel("State")
+        quality = [(6 - s) if s is not None and s > 3 else s for s in m["fsmc_state"]]
+        ax4.plot(m["ticks"], quality, color=colors[i], linewidth=0.6, alpha=0.8, label=name)
+    ax4.set_ylabel("Channel Quality")
     ax4.set_xlabel("Tick")
     ax4.set_title("FSMC State Evolution")
     ax4.set_yticks(range(4))
+    ax4.set_yticklabels(["Best", "2nd Best", "2nd Worst", "Worst"])
+    ax4.invert_yaxis()
     ax4.legend()
     ax4.grid(True, alpha=0.3)
 
@@ -760,8 +766,15 @@ def _run_single(args: tuple) -> dict:
     try:
         with open(cfg_file, "w") as f:
             json.dump(config, f)
-        subprocess.run([BINARY, cfg_file, log_file],
-                       capture_output=True, check=False)
+        result = subprocess.run([BINARY, cfg_file, log_file],
+                                capture_output=True, check=False)
+        if result.returncode != 0 or not os.path.exists(log_file):
+            raise RuntimeError(
+                f"{BINARY} failed (exit={result.returncode}) "
+                f"for run {run_id}.\n"
+                f"stderr: {result.stderr.decode(errors='replace')[-2000:]}\n"
+                f"stdout: {result.stdout.decode(errors='replace')[-500:]}"
+            )
         frames = load_results(log_file)
         return extract_metrics(frames, config)
     finally:
