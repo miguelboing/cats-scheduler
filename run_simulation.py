@@ -680,6 +680,32 @@ def print_success_criteria_table(all_results: list[tuple[str, dict]]):
             )
         print(sep)
 
+# ── Schedulability sweep ──────────────────────────────────────────────────────
+
+# Each sweep scenario fixes (n, d_min, d_max, sr_min, sr_max); U is swept.
+SWEEP_SCENARIOS = [
+    ("D=[5,10],n=4,SR=[0.5,0.7]",    4,   5, 10, 0.50, 0.70),
+    ("D=[5,20],n=10,SR=[0.5,0.7]",    10,  5, 20, 0.50, 0.70),
+    ("D=[20,40],n=20,SR=[0.5,0.7]",   20,  20, 40, 0.50, 0.70),
+]
+
+U_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+def schedulability_ratio(metrics: dict) -> float:
+    """Fraction of packet IDs whose final success ratio met the requirement."""
+    pids = sorted(metrics["per_id_req"].keys())
+    if not pids:
+        return 0.0
+    met = 0
+    for pid in pids:
+        gen = metrics["generated_per_id"].get(pid, 0)
+        if gen <= 0:
+            continue
+        ratio = 1 - metrics["undelivered_per_id"].get(pid, 0) / gen
+        if ratio >= metrics["per_id_req"][pid]:
+            met += 1
+    return met / len(pids)
+
 # ── Parallel-safe single run ──────────────────────────────────────────────────
 
 def _run_single(args: tuple) -> dict:
@@ -759,11 +785,144 @@ def average_metrics(runs: list[dict]) -> dict:
 
     return averaged
 
+# ── Sweep runner ──────────────────────────────────────────────────────────────
+
+def run_sweep(n_runs: int, n_workers: int) -> dict:
+    """For each (scenario, U, scheduler), run n_runs sims in a single big pool.
+    Returns nested dict results[scen_name][sch_name][U] = avg_schedulability."""
+    jobs = []
+    for scen_name, n, d_min, d_max, sr_min, sr_max in SWEEP_SCENARIOS:
+        for U in U_VALUES:
+            for sch_name, scheduler in SCHEDULERS:
+                test = {
+                    "name": f"{scen_name}_U={U:.2f}_{sch_name}",
+                    "config": {
+                        "simulation": BASE_SIM,
+                        "scheduler":  scheduler,
+                        "channels":   BASE_CHANNELS,
+                    },
+                    "uunifast": {
+                        "U":      U, "n":      n,
+                        "d_min":  d_min, "d_max":  d_max,
+                        "sr_min": sr_min, "sr_max": sr_max,
+                    },
+                }
+                for _ in range(n_runs):
+                    jobs.append(((scen_name, U, sch_name), test))
+
+    total = len(jobs)
+    print(f"  [sweep] dispatching {total} sims "
+          f"({len(SWEEP_SCENARIOS)} scen x {len(U_VALUES)} U x "
+          f"{len(SCHEDULERS)} sch x {n_runs} runs)", flush=True)
+
+    combo_runs = defaultdict(list)
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        futures = {
+            executor.submit(_run_single, (test, job_idx)): key
+            for job_idx, (key, test) in enumerate(jobs)
+        }
+        done = 0
+        for future in as_completed(futures):
+            key = futures[future]
+            combo_runs[key].append(future.result())
+            done += 1
+            if done % max(1, total // 50) == 0 or done == total:
+                print(f"  [sweep] {done}/{total} done", end="\r", flush=True)
+    print()
+
+    def percentile(xs, p):
+        s = sorted(xs)
+        if not s:
+            return 0.0
+        k = (len(s) - 1) * p / 100
+        f = int(k)
+        c = min(f + 1, len(s) - 1)
+        return s[f] + (s[c] - s[f]) * (k - f)
+
+    results = {scen[0]: {sch_name: {} for sch_name, _ in SCHEDULERS}
+               for scen in SWEEP_SCENARIOS}
+    for (scen_name, U, sch_name), runs in combo_runs.items():
+        ratios = [schedulability_ratio(m) for m in runs]
+        powers = [sum(m["tx_power"]) for m in runs]
+        results[scen_name][sch_name][U] = {
+            "sched_ratio":     sum(ratios) / len(ratios),
+            "sched_ratio_lo":  percentile(ratios, 10),
+            "sched_ratio_hi":  percentile(ratios, 90),
+            "total_power":     sum(powers) / len(powers),
+            "total_power_lo":  percentile(powers, 10),
+            "total_power_hi":  percentile(powers, 90),
+        }
+    return results
+
+def plot_schedulability(results: dict):
+    colors     = plt.cm.tab10.colors
+    linestyles = ["-", "--", "-.", ":"]
+    markers    = ["o", "s", "^", "D", "v", "P", "X"]
+    scen_names = list(results.keys())
+    n_scen     = len(scen_names)
+
+    fig, axes = plt.subplots(2, n_scen, figsize=(6 * n_scen, 9), sharex="col")
+    if n_scen == 1:
+        axes = axes.reshape(2, 1)
+
+    n_sch    = len(SCHEDULERS)
+    dx_step  = 0.012  # horizontal dodge between schedulers (in U units)
+
+    for col, scen_name in enumerate(scen_names):
+        ax_top = axes[0, col]
+        ax_bot = axes[1, col]
+        for i, (sch_name, u_to_metrics) in enumerate(results[scen_name].items()):
+            xs       = sorted(u_to_metrics.keys())
+            xs_dodge = [x + (i - (n_sch - 1) / 2) * dx_step for x in xs]
+            ratio    = [u_to_metrics[u]["sched_ratio"]    for u in xs]
+            ratio_lo = [max(0, r - u_to_metrics[u]["sched_ratio_lo"]) for u, r in zip(xs, ratio)]
+            ratio_hi = [max(0, u_to_metrics[u]["sched_ratio_hi"] - r) for u, r in zip(xs, ratio)]
+            power    = [u_to_metrics[u]["total_power"]    for u in xs]
+            power_lo = [max(0, p - u_to_metrics[u]["total_power_lo"]) for u, p in zip(xs, power)]
+            power_hi = [max(0, u_to_metrics[u]["total_power_hi"] - p) for u, p in zip(xs, power)]
+            color    = colors[i % len(colors)]
+            ls       = linestyles[i % len(linestyles)]
+            mk       = markers[i % len(markers)]
+            # Mean line (no dodge, runs through the true U) for clean shape
+            ax_top.plot(xs, ratio, color=color, linestyle=ls, marker=mk,
+                        markersize=7, linewidth=1.5, label=sch_name)
+            ax_bot.plot(xs, power, color=color, linestyle=ls, marker=mk,
+                        markersize=7, linewidth=1.5, label=sch_name)
+            # Dodged percentile bars on top, no connector line
+            ax_top.errorbar(xs_dodge, ratio, yerr=[ratio_lo, ratio_hi], fmt="none",
+                            ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
+            ax_bot.errorbar(xs_dodge, power, yerr=[power_lo, power_hi], fmt="none",
+                            ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
+        ax_top.set_title(scen_name)
+        ax_top.set_ylim(-0.05, 1.05)
+        ax_top.grid(True, alpha=0.3)
+        ax_top.legend()
+        ax_bot.set_xlabel("Utilization U")
+        ax_bot.grid(True, alpha=0.3)
+        ax_bot.legend()
+
+    axes[0, 0].set_ylabel("Schedulability ratio (met / total)")
+    axes[1, 0].set_ylabel("Total power (W)")
+    plt.suptitle("Schedulability and Total Power vs Utilization", fontsize=13)
+    plt.tight_layout()
+    out = "results_schedulability.png"
+    plt.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Schedulability plot saved to {out}")
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    n_runs   = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    n_runs    = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    mode      = sys.argv[2] if len(sys.argv) > 2 else "tests"
     n_workers = os.cpu_count() or 1
+
+    if mode == "sweep":
+        print(f"Running schedulability sweep ({n_runs} runs/point, {n_workers} workers)")
+        results = run_sweep(n_runs, n_workers)
+        plot_schedulability(results)
+        sys.exit(0)
+
     print(f"Running {n_runs} simulation(s) per test ({n_workers} workers)")
 
     all_results = []
