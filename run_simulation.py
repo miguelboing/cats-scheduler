@@ -83,13 +83,13 @@ BASE_CHANNELS = [
     }
 ]
 
-BASE_SIM = { "duration": 500 }
+BASE_SIM = { "duration": 500 } # About the same amount of frames contained in a day
 
 # Each scenario: (name, U, n, d_min, d_max, sr_min, sr_max)
 SCENARIOS = [
-    ("very_relaxed", 0.30, 2,  5, 10, 0.50, 0.70),
-    ("relaxed",      0.60, 2,  5, 20, 0.70, 0.90),
-    ("stressed",     0.90, 3,  5, 30, 0.75, 0.95),
+    ("U=10,D=[5,10],Packets_n=2,SR=[0.5,0.7]",    0.10, 2,   5, 10, 0.50, 0.70),
+    ("U=25,D=[5,20],Packets_n=5,SR=[0.5,0.7]",    0.25, 5,   5, 20, 0.50, 0.70),
+    ("U=50,D=[20,40],Packets_n=8,SR=[0.5,0.7]",   0.50, 8,  20, 40, 0.50, 0.70),
 ]
 
 SCHEDULERS = [
@@ -377,7 +377,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax1.plot(ticks, quality, color="steelblue", linewidth=0.8)
     ax1.set_ylabel("Channel Quality")
     ax1.set_xlabel("Tick")
-    ax1.set_title("FSMC State Evolution")
+    ax1.set_title("Channel Quality Evolution")
     ax1.set_yticks(range(4))
     ax1.set_yticklabels(["Best", "2nd Best", "2nd Worst", "Worst"])
     ax1.invert_yaxis()
