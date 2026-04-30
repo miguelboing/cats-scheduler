@@ -5,10 +5,12 @@
 #include "cats.hpp"
 
 
-CATS_scheduler::CATS_scheduler(unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), frequency(frequency), rx_period(rx_period)
+CATS_scheduler::CATS_scheduler(unsigned int frequency, float belief_threshold, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), frequency(frequency), belief_threshold(belief_threshold)
 {
-    transmission_prob[0] = transmission_prob[1] = transmission_prob[2] = 0.0;
-    retransmissions_per_frame = 1; /* TODO: estimate from channel prediction */
+    this->transmission_prob[0] = this->transmission_prob[1] = this->transmission_prob[2] = 0.0;
+    this->belief = 0.0;
+    this->retransmissions_per_frame = 1U; /* TODO: estimate from channel prediction */
+    this->eigenvalue = 0.99015;
 }
 
 scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
@@ -16,18 +18,26 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
     scheduled_frame_t scheduled_frame;
     scheduled_frame.frequency = this->frequency;
 
-    /* Check for packets to drop — use ceiling division for tx_slots to avoid premature drops */
+    /* Drop unfeasible packets and detect urgent ones in the same pass.
+       Under belief-based scheduling any slot can be TX, so a packet is
+       droppable iff ticks_available < needed_slots, and urgent iff
+       ticks_available == needed_slots (every remaining slot must be TX —
+       listening once would force a drop next iteration). */
     std::vector<std::pair<unsigned int, unsigned int>> to_drop;
+    bool no_urgent_packet = true;
     for (auto& pkt : *this->buffer_packet)
     {
         if (pkt.deadline <= *(this->system_tick)) continue; /* already expired, check_deadlines handles it */
         unsigned int ticks_available  = pkt.deadline - *(this->system_tick);
-        /* Ceiling division: floor((T * (P-1) + P-1) / P) */
-        unsigned int tx_slots         = (ticks_available * (this->rx_period - 1) + this->rx_period - 1) / this->rx_period;
         unsigned int remaining_frames = pkt.frames - pkt.frame_count;
-        if (tx_slots < remaining_frames * retransmissions_per_frame)
+        unsigned int needed_slots     = remaining_frames * this->retransmissions_per_frame;
+        if (ticks_available < needed_slots)
         {
             to_drop.emplace_back(pkt.id, pkt.id_count);
+        }
+        else if (ticks_available == needed_slots)
+        {
+            no_urgent_packet = false;
         }
     }
     for (auto& [id, id_count] : to_drop)
@@ -36,14 +46,18 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
         this->buffer->drop_packet(id, id_count);
     }
 
-    /* Check if it is time to listen to the channel */
-    if (*(this->system_tick) % this->rx_period == 0)
+    /* Listen only if we don't trust the channel AND no packet is on the edge of its deadline */
+    if (this->belief < this->belief_threshold && no_urgent_packet)
     {
         scheduled_frame.radio_mode = RX_MODE;
         scheduled_frame.packet = nullptr;
+        this->belief = 1.0;
     }
     else /* If it isn't, try to schedule a packet */
     {
+        /* Belief drops */
+        this->belief *= this->eigenvalue;
+
         /* Find the packet with the earliest deadline */
         auto lowest_it = std::min_element(this->buffer_packet->begin(),
                                           this->buffer_packet->end(),
@@ -96,7 +110,8 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
         else
         {
             scheduled_frame.packet = nullptr;
-            scheduled_frame.radio_mode = IDLE;
+            scheduled_frame.radio_mode = RX_MODE;
+            this->belief = 1.0;
         }
     }
 
@@ -112,3 +127,4 @@ std::string CATS_scheduler::get_name() const
 {
     return "CATS Scheduler";
 }
+

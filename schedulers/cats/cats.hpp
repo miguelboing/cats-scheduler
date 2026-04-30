@@ -8,10 +8,14 @@
 class CATS_scheduler : public BaseScheduler
 {
 public:
-    CATS_scheduler(unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
+    CATS_scheduler(unsigned int frequency, float belief_threshold, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick);
 
     unsigned int frequency;
-    unsigned int rx_period;
+
+    float belief;
+    float belief_threshold;
+    float eigenvalue;
+
     double transmission_prob[3];
     unsigned int retransmissions_per_frame;
     std::unordered_map<unsigned int, double> accumulated_prob;

@@ -73,7 +73,7 @@ BASE_SCHEDULER = {
 BASE_CATS_SCHEDULER = {
     "type": "CATS",
     "frequency": 14074000,
-    "rx_period": 5
+    "belief_threshold": 0.7
 }
 
 BASE_CHANNELS = [
@@ -240,7 +240,8 @@ def print_test_summary(test: dict):
     sched = cfg['scheduler']
     tx_power_str = f"  tx_power={sched['tx_power']}W" if 'tx_power' in sched else ""
     rx_period_str = f"  rx_period={sched['rx_period']}" if 'rx_period' in sched else ""
-    print(f"   Scheduler  : {sched['type']}{tx_power_str}  freq={sched['frequency']}Hz{rx_period_str}")
+    belief_str = f"  belief_threshold={sched['belief_threshold']}" if 'belief_threshold' in sched else ""
+    print(f"   Scheduler  : {sched['type']}{tx_power_str}  freq={sched['frequency']}Hz{rx_period_str}{belief_str}")
     print(f"   Duration   : {cfg['simulation']['duration']} ticks")
     print(f"   Channels   : {', '.join(ch['name'] for ch in cfg['channels'])}")
     print(f"   Packets:")
