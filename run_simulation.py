@@ -5,6 +5,7 @@ import copy
 import random
 import subprocess
 import tempfile
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Optional
@@ -83,7 +84,7 @@ BASE_CHANNELS = [
     }
 ]
 
-BASE_SIM = { "duration": 500 } # About the same amount of frames contained in a day
+BASE_SIM = { "duration": 5000 } # About the same amount of frames contained in a day
 
 # Each scenario: (name, U, n, d_min, d_max, sr_min, sr_max)
 SCENARIOS = [
@@ -371,15 +372,15 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     fig = plt.figure(figsize=(14, 16))
     gs  = gridspec.GridSpec(4, 2, figure=fig, hspace=0.45, wspace=0.35)
 
-    # 1. FSMC state (aggregate paired states to channel quality: 0=best .. 3=worst)
-    quality = [(6 - s) if s is not None and s > 3 else s for s in m["fsmc_state"]]
+    # 1. FSMC state (states 0-2 = Excellent, 3-5 = Worst)
+    quality = [None if s is None else (0 if s < 3 else 1) for s in m["fsmc_state"]]
     ax1 = fig.add_subplot(gs[0, :])
     ax1.plot(ticks, quality, color="steelblue", linewidth=0.8)
     ax1.set_ylabel("Channel Quality")
     ax1.set_xlabel("Tick")
     ax1.set_title("Channel Quality Evolution")
-    ax1.set_yticks(range(4))
-    ax1.set_yticklabels(["Best", "2nd Best", "2nd Worst", "Worst"])
+    ax1.set_yticks(range(2))
+    ax1.set_yticklabels(["Excellent", "Worst"])
     ax1.invert_yaxis()
     ax1.grid(True, alpha=0.3)
 
@@ -518,16 +519,16 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax3.legend()
     ax3.grid(True, alpha=0.3, axis="y")
 
-    # 4. FSMC state evolution per test (aggregated to channel quality)
+    # 4. FSMC state evolution per test (Excellent vs Worst)
     ax4 = fig.add_subplot(gs[1, 1])
     for i, (name, m) in enumerate(results):
-        quality = [(6 - s) if s is not None and s > 3 else s for s in m["fsmc_state"]]
+        quality = [None if s is None else (0 if s < 3 else 1) for s in m["fsmc_state"]]
         ax4.plot(m["ticks"], quality, color=colors[i], linewidth=0.6, alpha=0.8, label=name)
     ax4.set_ylabel("Channel Quality")
     ax4.set_xlabel("Tick")
     ax4.set_title("FSMC State Evolution")
-    ax4.set_yticks(range(4))
-    ax4.set_yticklabels(["Best", "2nd Best", "2nd Worst", "Worst"])
+    ax4.set_yticks(range(2))
+    ax4.set_yticklabels(["Excellent", "Worst"])
     ax4.invert_yaxis()
     ax4.legend()
     ax4.grid(True, alpha=0.3)
@@ -912,15 +913,27 @@ def plot_schedulability(results: dict):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def format_duration(seconds: float) -> str:
+    h, rem = divmod(int(seconds), 3600)
+    m, s   = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{seconds:.2f}s"
+
 if __name__ == "__main__":
     n_runs    = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     mode      = sys.argv[2] if len(sys.argv) > 2 else "tests"
     n_workers = os.cpu_count() or 1
 
+    t_start = time.perf_counter()
+
     if mode == "sweep":
         print(f"Running schedulability sweep ({n_runs} runs/point, {n_workers} workers)")
         results = run_sweep(n_runs, n_workers)
         plot_schedulability(results)
+        print(f"Total elapsed: {format_duration(time.perf_counter() - t_start)}")
         sys.exit(0)
 
     print(f"Running {n_runs} simulation(s) per test ({n_workers} workers)")
@@ -955,4 +968,6 @@ if __name__ == "__main__":
         plot_comparison(all_results)
         print_comparison_table(all_results)
         print_success_criteria_table(all_results)
+
+    print(f"\nTotal elapsed: {format_duration(time.perf_counter() - t_start)}")
 
