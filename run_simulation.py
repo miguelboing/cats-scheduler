@@ -926,7 +926,7 @@ def format_duration(seconds: float) -> str:
 if __name__ == "__main__":
     n_runs    = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     mode      = sys.argv[2] if len(sys.argv) > 2 else "tests"
-    n_workers = os.cpu_count() or 1
+    n_workers = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
 
     t_start = time.perf_counter()
 
