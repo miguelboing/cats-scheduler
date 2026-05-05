@@ -29,7 +29,13 @@ conda activate cats-scheduler
 cd "${SLURM_SUBMIT_DIR}"
 
 # --- Build ------------------------------------------------------------------
-make
+# Build is intentionally NOT done here — concurrent jobs would race on main.o
+# (the Makefile rm's then re-creates it, leaving a window where it's missing).
+# Run `make` on a login node before submitting, and after any C++ edits.
+if [ ! -x main.o ]; then
+    echo "ERROR: main.o not found. Run 'make' on a login node before submitting." >&2
+    exit 1
+fi
 
 # --- Run --------------------------------------------------------------------
 # Stop BLAS/OMP from oversubscribing cores already taken by the worker pool.
