@@ -10,9 +10,9 @@
 #SBATCH --cpus-per-task=32
 
 # Submit with:
-#     sbatch run_aire.sh <run_name>
+#     sbatch run_aire.sh <run_name> [belief_threshold]
 # Override defaults via --export, e.g.:
-#     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name>
+#     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name> [belief_threshold]
 
 set -euo pipefail
 
@@ -46,6 +46,7 @@ export OPENBLAS_NUM_THREADS=1
 N_RUNS="${N_RUNS:-50}"   # runs averaged per (scenario, U, scheduler) point
 MODE="${MODE:-sweep}"    # tests | sweep
 RUN_NAME="${1:-run-${SLURM_JOB_ID}}"
+BELIEF_THRESHOLD="${2:-}"   # optional; if empty, run_simulation.py uses its default
 
-echo "Job ${SLURM_JOB_ID} | ${SLURM_CPUS_PER_TASK} CPUs | mode=${MODE} | n_runs=${N_RUNS} | name=${RUN_NAME}"
-python run_simulation.py "${N_RUNS}" "${MODE}" "${RUN_NAME}"
+echo "Job ${SLURM_JOB_ID} | ${SLURM_CPUS_PER_TASK} CPUs | mode=${MODE} | n_runs=${N_RUNS} | name=${RUN_NAME} | belief=${BELIEF_THRESHOLD:-default}"
+python run_simulation.py "${N_RUNS}" "${MODE}" "${RUN_NAME}" ${BELIEF_THRESHOLD:+"${BELIEF_THRESHOLD}"}

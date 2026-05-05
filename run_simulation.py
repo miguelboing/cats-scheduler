@@ -929,10 +929,15 @@ def format_duration(seconds: float) -> str:
     return f"{seconds:.2f}s"
 
 if __name__ == "__main__":
-    n_runs    = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    mode      = sys.argv[2] if len(sys.argv) > 2 else "tests"
-    run_name  = sys.argv[3] if len(sys.argv) > 3 else None
-    n_workers = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    n_runs           = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    mode             = sys.argv[2] if len(sys.argv) > 2 else "tests"
+    run_name         = sys.argv[3] if len(sys.argv) > 3 else None
+    belief_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else None
+    n_workers        = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+
+    if belief_threshold is not None:
+        BASE_CATS_SCHEDULER["belief_threshold"] = belief_threshold
+        print(f"CATS belief_threshold overridden to {belief_threshold}")
 
     if run_name:
         os.makedirs(run_name, exist_ok=True)
