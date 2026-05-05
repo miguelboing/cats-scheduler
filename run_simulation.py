@@ -122,7 +122,8 @@ TESTS = [
 
 CONFIG_FILE = "simulation_config.json"
 LOG_FILE    = "simulation_log.json"
-BINARY      = "./main.o"
+SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+BINARY      = os.path.join(SCRIPT_DIR, "main.o")
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
@@ -221,8 +222,9 @@ def write_config(config: dict, path: str):
     with open(path, "w") as f:
         json.dump(config, f, indent=4)
 
-def run_simulation(binary: str, config_file: str):
-    result = subprocess.run([binary, config_file], capture_output=True, text=True)
+def run_simulation(binary: str, config_file: str, log_file: Optional[str] = None):
+    cmd = [binary, config_file] + ([log_file] if log_file else [])
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=SCRIPT_DIR)
     if result.returncode != 0:
         print("Simulation failed:")
         print(result.stdout)
@@ -253,9 +255,11 @@ def print_test_summary(test: dict):
 def run_test(test: dict) -> tuple[list["Frame"], dict]:
     config = make_config(test)
     print_test_summary({ "name": test["name"], "config": config })
-    write_config(config, CONFIG_FILE)
-    run_simulation(BINARY, CONFIG_FILE)
-    frames = load_results(LOG_FILE)
+    cfg_path = os.path.abspath(CONFIG_FILE)
+    log_path = os.path.abspath(LOG_FILE)
+    write_config(config, cfg_path)
+    run_simulation(BINARY, cfg_path, log_path)
+    frames = load_results(log_path)
     print(f"   Done — {len(frames)} frames loaded")
     return frames, config
 
@@ -722,7 +726,8 @@ def _run_single(args: tuple) -> dict:
         with open(cfg_file, "w") as f:
             json.dump(config, f)
         result = subprocess.run([BINARY, cfg_file, log_file],
-                                capture_output=True, check=False)
+                                capture_output=True, check=False,
+                                cwd=SCRIPT_DIR)
         if result.returncode != 0 or not os.path.exists(log_file):
             raise RuntimeError(
                 f"{BINARY} failed (exit={result.returncode}) "
@@ -926,7 +931,13 @@ def format_duration(seconds: float) -> str:
 if __name__ == "__main__":
     n_runs    = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     mode      = sys.argv[2] if len(sys.argv) > 2 else "tests"
+    run_name  = sys.argv[3] if len(sys.argv) > 3 else None
     n_workers = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+
+    if run_name:
+        os.makedirs(run_name, exist_ok=True)
+        os.chdir(run_name)
+        print(f"Outputs will be written under: {os.path.abspath('.')}")
 
     t_start = time.perf_counter()
 
