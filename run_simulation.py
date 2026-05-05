@@ -27,20 +27,24 @@ def uunifast(n: int, U: float) -> list[float]:
     utils.append(s)
     return utils
 
-def uunifast_packets(n: int, U: float, d_min: int, d_max: int,
+def uunifast_packets(n: int, U: float, c_min: int, c_max: int,
                      sr_min: float, sr_max: float) -> list[dict]:
     """Turn a UUniFast draw into a fixed_rate packet list.
-    Each task gets an independent deadline D ~ uniform_int[d_min, d_max] and
-    success-rate requirement sr ~ uniform[sr_min, sr_max]. Since D=T,
-    period=deadline=D. Ci = max(1, round(ui * D))."""
+    Each task gets an independent frame count C ~ uniform_int[c_min, c_max]
+    and success-rate requirement sr ~ uniform[sr_min, sr_max]. Deadline is
+    derived from utilization: D = floor(C / u). Since UUniFast yields u in
+    (0,1), we have D >= C, so the floored D keeps actual u' = C/D in (u, 1]
+    — utilization stays at-or-slightly-above the requested level instead of
+    drifting upward as it would when rounding C from a fixed D."""
     utils = uunifast(n, U)
     packets = []
     for i, u in enumerate(utils):
-        D = random.randint(d_min, d_max)
+        C = random.randint(c_min, c_max)
+        D = max(C, int(C / u))  # floor; clamp to C if u ≈ 1
         packets.append({
             "id":                i + 1,
             "relative_deadline": D,
-            "frames":            max(1, round(u * D)),
+            "frames":            C,
             "success_rate":      round(random.uniform(sr_min, sr_max), 2),
             "period":            D,
             "phase":             0,
@@ -56,7 +60,7 @@ def make_config(test: dict) -> dict:
         config["packet_generators"] = [{
             "type":    "fixed_rate",
             "packets": uunifast_packets(spec["n"], spec["U"],
-                                        spec["d_min"],  spec["d_max"],
+                                        spec["c_min"],  spec["c_max"],
                                         spec["sr_min"], spec["sr_max"]),
         }]
     return config
@@ -86,11 +90,11 @@ BASE_CHANNELS = [
 
 BASE_SIM = { "duration": 5000 } # About the same amount of frames contained in a day
 
-# Each scenario: (name, U, n, d_min, d_max, sr_min, sr_max)
+# Each scenario: (name, U, n, c_min, c_max, sr_min, sr_max)
 SCENARIOS = [
-    ("U=10,D=[5,10],Packets_n=2,SR=[0.5,0.7]",    0.10, 2,   5, 10, 0.50, 0.70),
-    ("U=25,D=[5,20],Packets_n=5,SR=[0.5,0.7]",    0.25, 5,   5, 20, 0.50, 0.70),
-    ("U=50,D=[20,40],Packets_n=8,SR=[0.5,0.7]",   0.50, 8,  20, 40, 0.50, 0.70),
+    ("U=10,C=[1,3],Packets_n=2,SR=[0.5,0.7]",   0.10, 2,  1, 3, 0.50, 0.70),
+    ("U=25,C=[1,3],Packets_n=5,SR=[0.5,0.7]",   0.25, 5,  1, 3, 0.50, 0.70),
+    ("U=50,C=[1,3],Packets_n=8,SR=[0.5,0.7]",   0.50, 8,  1, 3, 0.50, 0.70),
 ]
 
 SCHEDULERS = [
@@ -110,13 +114,13 @@ TESTS = [
         "uunifast": {
             "U":      U,
             "n":      n,
-            "d_min":  d_min,
-            "d_max":  d_max,
+            "c_min":  c_min,
+            "c_max":  c_max,
             "sr_min": sr_min,
             "sr_max": sr_max,
         },
     }
-    for scen_name, U, n, d_min, d_max, sr_min, sr_max in SCENARIOS
+    for scen_name, U, n, c_min, c_max, sr_min, sr_max in SCENARIOS
     for sch_name, scheduler in SCHEDULERS
 ]
 
@@ -688,11 +692,11 @@ def print_success_criteria_table(all_results: list[tuple[str, dict]]):
 
 # ── Schedulability sweep ──────────────────────────────────────────────────────
 
-# Each sweep scenario fixes (n, d_min, d_max, sr_min, sr_max); U is swept.
+# Each sweep scenario fixes (n, c_min, c_max, sr_min, sr_max); U is swept.
 SWEEP_SCENARIOS = [
-    ("D=[5,10],n=4,SR=[0.5,0.7]",    4,   5, 10, 0.50, 0.70),
-    ("D=[5,20],n=10,SR=[0.5,0.7]",    10,  5, 20, 0.50, 0.70),
-    ("D=[20,40],n=20,SR=[0.5,0.7]",   20,  20, 40, 0.50, 0.70),
+    ("C=[1,3],n=4,SR=[0.5,0.7]",   4,  1, 3, 0.50, 0.70),
+    ("C=[1,3],n=10,SR=[0.5,0.7]",  10, 1, 3, 0.50, 0.70),
+    ("C=[1,3],n=20,SR=[0.5,0.7]",  20, 1, 3, 0.50, 0.70),
 ]
 
 U_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
@@ -798,7 +802,7 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
     """For each (scenario, U, scheduler), run n_runs sims in a single big pool.
     Returns nested dict results[scen_name][sch_name][U] = avg_schedulability."""
     jobs = []
-    for scen_name, n, d_min, d_max, sr_min, sr_max in SWEEP_SCENARIOS:
+    for scen_name, n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS:
         for U in U_VALUES:
             for sch_name, scheduler in SCHEDULERS:
                 test = {
@@ -810,7 +814,7 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
                     },
                     "uunifast": {
                         "U":      U, "n":      n,
-                        "d_min":  d_min, "d_max":  d_max,
+                        "c_min":  c_min, "c_max":  c_max,
                         "sr_min": sr_min, "sr_max": sr_max,
                     },
                 }
