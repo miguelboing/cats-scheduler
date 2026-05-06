@@ -13,6 +13,8 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
+TESTS_DIR = "tests"
+
 # ── UUniFast task-set generator ───────────────────────────────────────────────
 
 def uunifast(n: int, U: float) -> list[float]:
@@ -473,7 +475,8 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax6.grid(True, alpha=0.3)
 
     plt.suptitle(f"{scheduler_type} — {test_name}", fontsize=13)
-    out = f"results_{test_name}.png"
+    os.makedirs(TESTS_DIR, exist_ok=True)
+    out = os.path.join(TESTS_DIR, f"results_{test_name}.png")
     plt.savefig(out, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Plot saved to {out}")
@@ -545,9 +548,11 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax4.grid(True, alpha=0.3)
 
     plt.suptitle("Test Comparison", fontsize=13)
-    plt.savefig("results_comparison.png", dpi=150, bbox_inches="tight")
+    os.makedirs(TESTS_DIR, exist_ok=True)
+    out = os.path.join(TESTS_DIR, "results_comparison.png")
+    plt.savefig(out, dpi=150, bbox_inches="tight")
     plt.close()
-    print("Comparison plot saved to results_comparison.png")
+    print(f"Comparison plot saved to {out}")
 
 # ── Summary table ─────────────────────────────────────────────────────────────
 
@@ -918,7 +923,8 @@ def plot_schedulability(results: dict):
     axes[1, 0].set_ylabel("Total power (W)")
     plt.suptitle("Schedulability and Total Power vs Utilization", fontsize=13)
     plt.tight_layout()
-    out = "results_schedulability.png"
+    os.makedirs(TESTS_DIR, exist_ok=True)
+    out = os.path.join(TESTS_DIR, "results_schedulability.png")
     plt.savefig(out, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Schedulability plot saved to {out}")
