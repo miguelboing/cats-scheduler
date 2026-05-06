@@ -93,11 +93,23 @@ BASE_CHANNELS = [
 
 BASE_SIM = { "duration": 5000 } # About the same amount of frames contained in a day
 
-# Each scenario: (name, U, n, c_min, c_max, sr_min, sr_max)
+def scenario_label(n: int, c_min: int, c_max: int,
+                   sr_min: float, sr_max: float, U: Optional[float] = None) -> str:
+    """Render a scenario's parameters as a compact label used in plot titles
+    and filenames. Always derived from the actual values so it can't drift."""
+    parts = []
+    if U is not None:
+        parts.append(f"U={int(round(U * 100))}")
+    parts.append(f"n={n}")
+    parts.append(f"C=[{c_min},{c_max}]")
+    parts.append(f"SR=[{sr_min},{sr_max}]")
+    return ",".join(parts)
+
+# Each scenario: (U, n, c_min, c_max, sr_min, sr_max)
 SCENARIOS = [
-    ("U=10,C=[1,3],Packets_n=2,SR=[0.5,0.7]",   0.10, 2,  1, 3, 0.50, 0.70),
-    ("U=25,C=[1,3],Packets_n=5,SR=[0.5,0.7]",   0.25, 5,  1, 3, 0.50, 0.70),
-    ("U=50,C=[1,3],Packets_n=8,SR=[0.5,0.7]",   0.50, 8,  1, 3, 0.50, 0.70),
+    (0.10, 2,  1, 3, 0.50, 0.70),
+    (0.25, 5,  1, 3, 0.50, 0.70),
+    (0.50, 8,  1, 3, 0.50, 0.70),
 ]
 
 SCHEDULERS = [
@@ -108,7 +120,7 @@ SCHEDULERS = [
 
 TESTS = [
     {
-        "name": f"{scen_name}_{sch_name}",
+        "name": f"{scenario_label(n, c_min, c_max, sr_min, sr_max, U)}_{sch_name}",
         "config": {
             "simulation": BASE_SIM,
             "scheduler":  scheduler,
@@ -123,7 +135,7 @@ TESTS = [
             "sr_max": sr_max,
         },
     }
-    for scen_name, U, n, c_min, c_max, sr_min, sr_max in SCENARIOS
+    for U, n, c_min, c_max, sr_min, sr_max in SCENARIOS
     for sch_name, scheduler in SCHEDULERS
 ]
 
@@ -701,9 +713,9 @@ def print_success_criteria_table(all_results: list[tuple[str, dict]]):
 
 # Each sweep scenario fixes (n, c_min, c_max, sr_min, sr_max); U is swept.
 SWEEP_SCENARIOS = [
-    ("C=[1,3],n=4,SR=[0.5,0.7]",   4,  1, 3, 0.50, 0.70),
-    ("C=[1,3],n=10,SR=[0.5,0.7]",  10, 1, 3, 0.50, 0.70),
-    ("C=[1,3],n=20,SR=[0.5,0.7]",  20, 1, 3, 0.50, 0.70),
+    (4,  1, 3, 0.50, 0.70),
+    (10, 1, 3, 0.50, 0.70),
+    (20, 1, 3, 0.50, 0.70),
 ]
 
 U_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
@@ -809,7 +821,8 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
     """For each (scenario, U, scheduler), run n_runs sims in a single big pool.
     Returns nested dict results[scen_name][sch_name][U] = avg_schedulability."""
     jobs = []
-    for scen_name, n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS:
+    for n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS:
+        scen_name = scenario_label(n, c_min, c_max, sr_min, sr_max)
         for U in U_VALUES:
             for sch_name, scheduler in SCHEDULERS:
                 test = {
@@ -857,7 +870,7 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
         c = min(f + 1, len(s) - 1)
         return s[f] + (s[c] - s[f]) * (k - f)
 
-    results = {scen[0]: {sch_name: {} for sch_name, _ in SCHEDULERS}
+    results = {scenario_label(*scen): {sch_name: {} for sch_name, _ in SCHEDULERS}
                for scen in SWEEP_SCENARIOS}
     for (scen_name, U, sch_name), runs in combo_runs.items():
         ratios = [schedulability_ratio(m) for m in runs]
