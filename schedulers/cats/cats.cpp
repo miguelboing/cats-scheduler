@@ -5,7 +5,7 @@
 #include "cats.hpp"
 
 
-CATS_scheduler::CATS_scheduler(unsigned int frequency, float belief_threshold, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), frequency(frequency), belief_threshold(belief_threshold)
+CATS_scheduler::CATS_scheduler(unsigned int frequency, float belief_threshold, double margin, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), frequency(frequency), belief_threshold(belief_threshold), margin(margin)
 {
     this->transmission_prob[0] = this->transmission_prob[1] = this->transmission_prob[2] = 0.0;
     this->belief = 0.0;
@@ -75,12 +75,15 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
             double acc = (accumulated_prob.find(key) != accumulated_prob.end())
                          ? accumulated_prob[key] : 0.0;
 
-            /* Pick smallest power whose accumulated probability would meet the requirement */
+            /* Margin protects against single-shot Bernoulli failures: with no ack we
+               can't recover a missed draw, so pick the smallest power whose accumulated
+               probability clears req + margin (clamped at 1.0). */
+            const double effective_req = std::min(1.0, req + this->margin);
             int chosen_idx = -1;
             for (int i = 0; i < 3; i++)
             {
                 double acc_after = acc + transmission_prob[i] - acc * transmission_prob[i];
-                if (acc_after >= req)
+                if (acc_after >= effective_req)
                 {
                     chosen_idx = i;
                     break;
