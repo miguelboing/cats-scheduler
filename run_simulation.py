@@ -767,6 +767,17 @@ def _run_single(args: tuple) -> dict:
             except FileNotFoundError:
                 pass
 
+def _run_single_sweep(args: tuple) -> dict:
+    """Sweep-mode worker: runs the sim, reduces to the two scalars sweep needs,
+    and drops the full metrics dict before returning. Keeps the parent's
+    memory footprint flat in `duration` — the per-tick arrays never cross
+    the pickle boundary."""
+    metrics = _run_single(args)
+    return {
+        "sched_ratio": schedulability_ratio(metrics),
+        "total_power": float(sum(metrics["tx_power"])),
+    }
+
 # ── Multi-run averaging ───────────────────────────────────────────────────────
 
 def average_metrics(runs: list[dict]) -> dict:
@@ -849,7 +860,7 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
     combo_runs = defaultdict(list)
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         futures = {
-            executor.submit(_run_single, (test, job_idx)): key
+            executor.submit(_run_single_sweep, (test, job_idx)): key
             for job_idx, (key, test) in enumerate(jobs)
         }
         done = 0
@@ -873,8 +884,8 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
     results = {scenario_label(*scen): {sch_name: {} for sch_name, _ in SCHEDULERS}
                for scen in SWEEP_SCENARIOS}
     for (scen_name, U, sch_name), runs in combo_runs.items():
-        ratios = [schedulability_ratio(m) for m in runs]
-        powers = [sum(m["tx_power"]) for m in runs]
+        ratios = [r["sched_ratio"] for r in runs]
+        powers = [r["total_power"] for r in runs]
         results[scen_name][sch_name][U] = {
             "sched_ratio":     sum(ratios) / len(ratios),
             "sched_ratio_lo":  percentile(ratios, 10),
@@ -970,8 +981,10 @@ if __name__ == "__main__":
         print(f"CATS margin overridden to {margin}")
 
     if run_name:
-        os.makedirs(run_name, exist_ok=True)
-        os.chdir(run_name)
+        target = os.path.join(TESTS_DIR, run_name)
+        os.makedirs(target, exist_ok=True)
+        os.chdir(target)
+        TESTS_DIR = "."   # already inside tests/<run_name>, don't nest another tests/
         print(f"Outputs will be written under: {os.path.abspath('.')}")
 
     t_start = time.perf_counter()
