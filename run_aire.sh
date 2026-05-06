@@ -10,9 +10,9 @@
 #SBATCH --cpus-per-task=32
 
 # Submit with:
-#     sbatch run_aire.sh <run_name> [belief_threshold]
+#     sbatch run_aire.sh <run_name> [belief_threshold] [margin]
 # Override defaults via --export, e.g.:
-#     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name> [belief_threshold]
+#     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name> [belief_threshold] [margin]
 
 set -euo pipefail
 
@@ -47,6 +47,8 @@ N_RUNS="${N_RUNS:-50}"   # runs averaged per (scenario, U, scheduler) point
 MODE="${MODE:-sweep}"    # tests | sweep
 RUN_NAME="${1:-run-${SLURM_JOB_ID}}"
 BELIEF_THRESHOLD="${2:-}"   # optional; if empty, run_simulation.py uses its default
+MARGIN="${3:-}"             # optional; if empty, run_simulation.py uses its default
+# Note: passing margin requires belief_threshold to be set (positional args).
 
-echo "Job ${SLURM_JOB_ID} | ${SLURM_CPUS_PER_TASK} CPUs | mode=${MODE} | n_runs=${N_RUNS} | name=${RUN_NAME} | belief=${BELIEF_THRESHOLD:-default}"
-python run_simulation.py "${N_RUNS}" "${MODE}" "${RUN_NAME}" ${BELIEF_THRESHOLD:+"${BELIEF_THRESHOLD}"}
+echo "Job ${SLURM_JOB_ID} | ${SLURM_CPUS_PER_TASK} CPUs | mode=${MODE} | n_runs=${N_RUNS} | name=${RUN_NAME} | belief=${BELIEF_THRESHOLD:-default} | margin=${MARGIN:-default}"
+python run_simulation.py "${N_RUNS}" "${MODE}" "${RUN_NAME}" ${BELIEF_THRESHOLD:+"${BELIEF_THRESHOLD}"} ${MARGIN:+"${MARGIN}"}

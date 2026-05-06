@@ -107,6 +107,7 @@ int main(int argc, char* argv[])
         scheduler = std::make_unique<CATS_scheduler>(
             sched_cfg["frequency"],
             sched_cfg["belief_threshold"],
+            sched_cfg["margin"],
             &buffer,
             system_tick
         );
