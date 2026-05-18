@@ -91,7 +91,7 @@ BASE_CHANNELS = [
     }
 ]
 
-BASE_SIM = { "duration": 5000 } # About the same amount of frames contained in a day
+BASE_SIM = { "duration": 100000 } # Sufficient for this steady state matrix
 
 def scenario_label(n: int, c_min: int, c_max: int,
                    sr_min: float, sr_max: float, U: Optional[float] = None) -> str:
