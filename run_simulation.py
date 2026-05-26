@@ -91,7 +91,7 @@ BASE_CHANNELS = [
     }
 ]
 
-BASE_SIM = { "duration": 100000 } # Sufficient for this steady state matrix
+BASE_SIM = { "duration": 200 } # Sufficient for this steady state matrix
 
 def scenario_label(n: int, c_min: int, c_max: int,
                    sr_min: float, sr_max: float, U: Optional[float] = None) -> str:
@@ -473,16 +473,16 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax5.legend()
     ax5.grid(True, alpha=0.3, axis="y")
 
-    # 6. Average power consumption (0W for IDLE/RX)
+    # 6. Per-frame TX power (0W for IDLE/RX) with running average
     ax6 = fig.add_subplot(gs[2, 1])
     pw_vals = m["tx_power"]
     cumulative_avg = [sum(pw_vals[:i+1]) / (i+1) for i in range(len(pw_vals))]
     final_avg = cumulative_avg[-1] if cumulative_avg else 0
-    ax6.plot(ticks, pw_vals, color="steelblue", linewidth=0.6, alpha=0.4, label="Power per tick")
-    ax6.plot(ticks, cumulative_avg, color="orange", linewidth=1.2, label=f"Cumulative avg = {final_avg:.2f}W")
+    ax6.plot(ticks, pw_vals, color="steelblue", linewidth=0.6, alpha=0.4, label="Power per frame")
+    ax6.plot(ticks, cumulative_avg, color="orange", linewidth=1.2, label=f"Average = {final_avg:.2f} W")
     ax6.set_ylabel("Power (W)")
-    ax6.set_xlabel("Tick")
-    ax6.set_title("Power Consumption (0W = IDLE/RX)")
+    ax6.set_xlabel("Frame")
+    ax6.set_title("TX Power per Frame (0 W = IDLE/RX)")
     ax6.legend()
     ax6.grid(True, alpha=0.3)
 
@@ -570,15 +570,15 @@ def plot_comparison(results: list[tuple[str, dict]]):
 
 def print_summary_table(test_name: str, metrics: dict, config: dict):
     tx_power      = metrics["tx_power"]
-    total_power   = sum(tx_power)
-    average_power = total_power / len(tx_power) if tx_power else 0.0
+    total_energy  = sum(tx_power)                                   # W·frame
+    average_power = total_energy / len(tx_power) if tx_power else 0.0  # W
 
     pids = sorted(metrics["per_id_req"].keys())
 
     # Build per-id req lookup from config
     id_req = {p["id"]: p["success_rate"] for gen in config["packet_generators"] for p in gen["packets"]}
 
-    col_w = [6, 20, 16, 18, 18, 12, 12]
+    col_w = [6, 20, 16, 18, 18, 14, 18]
     header = (
         f"{'ID':<{col_w[0]}}"
         f"{'Undelivered':>{col_w[1]}}"
@@ -586,7 +586,7 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
         f"{'Success Ratio':>{col_w[3]}}"
         f"{'Success Req':>{col_w[4]}}"
         f"{'Avg Power (W)':>{col_w[5]}}"
-        f"{'Total Power (W)':>{col_w[6]}}"
+        f"{'Energy (W·frame)':>{col_w[6]}}"
     )
     sep = "-" * sum(col_w)
 
@@ -608,11 +608,11 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
             f"{success_ratio:>{col_w[3]}.2f}"
             f"{req:>{col_w[4]}.2f}"
             f"{average_power:>{col_w[5]}.2f}"
-            f"{total_power:>{col_w[6]}.2f}"
+            f"{total_energy:>{col_w[6]}.2f}"
         )
 
     print(sep)
-    print(f"  (Avg/Total power are per-simulation, shared across all packet IDs)")
+    print(f"  (Avg power and energy are per-simulation, shared across all packet IDs)")
 
 # ── Comparison table ──────────────────────────────────────────────────────────
 
@@ -628,7 +628,7 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
         f"{'Transmissions':>{col_w}}"
         f"{'Met Criteria':>{col_w}}"
         f"{'Avg Pwr (W)':>{col_w}}"
-        f"{'Tot Pwr (W)':>{col_w}}"
+        f"{'Energy (W·frame)':>{col_w}}"
     )
     sep = "-" * len(header)
 
@@ -640,8 +640,8 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
 
     for name, m in all_results:
         tx_power      = m["tx_power"]
-        avg_power     = sum(tx_power) / len(tx_power) if tx_power else 0.0
-        total_power   = sum(tx_power)
+        avg_power     = sum(tx_power) / len(tx_power) if tx_power else 0.0  # W
+        total_energy  = sum(tx_power)                                       # W·frame
         total_undel   = sum(m["undelivered_per_id"].values())
         total_gen     = sum(m["generated_per_id"].values())
         total_dropped = sum(m["cumulative_dropped"][-1:] or [0])
@@ -662,7 +662,7 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
             f"{m['total_transmissions']:>{col_w}.2f}"
             f"{criteria:>{col_w}}"
             f"{avg_power:>{col_w}.2f}"
-            f"{total_power:>{col_w}.2f}"
+            f"{total_energy:>{col_w}.2f}"
         )
 
     print(sep)
@@ -771,11 +771,16 @@ def _run_single_sweep(args: tuple) -> dict:
     """Sweep-mode worker: runs the sim, reduces to the two scalars sweep needs,
     and drops the full metrics dict before returning. Keeps the parent's
     memory footprint flat in `duration` — the per-tick arrays never cross
-    the pickle boundary."""
+    the pickle boundary.
+
+    `total_energy` is sum(tx_power) over all frames, in units of W·frame.
+    Dimensionally equivalent to energy modulo the (unspecified) frame
+    duration in seconds — same constant for every scheduler, so comparisons
+    are unchanged."""
     metrics = _run_single(args)
     return {
-        "sched_ratio": schedulability_ratio(metrics),
-        "total_power": float(sum(metrics["tx_power"])),
+        "sched_ratio":  schedulability_ratio(metrics),
+        "total_energy": float(sum(metrics["tx_power"])),
     }
 
 # ── Multi-run averaging ───────────────────────────────────────────────────────
@@ -884,15 +889,15 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
     results = {scenario_label(*scen): {sch_name: {} for sch_name, _ in SCHEDULERS}
                for scen in SWEEP_SCENARIOS}
     for (scen_name, U, sch_name), runs in combo_runs.items():
-        ratios = [r["sched_ratio"] for r in runs]
-        powers = [r["total_power"] for r in runs]
+        ratios   = [r["sched_ratio"]  for r in runs]
+        energies = [r["total_energy"] for r in runs]
         results[scen_name][sch_name][U] = {
             "sched_ratio":     sum(ratios) / len(ratios),
             "sched_ratio_lo":  percentile(ratios, 10),
             "sched_ratio_hi":  percentile(ratios, 90),
-            "total_power":     sum(powers) / len(powers),
-            "total_power_lo":  percentile(powers, 10),
-            "total_power_hi":  percentile(powers, 90),
+            "total_energy":    sum(energies) / len(energies),
+            "total_energy_lo": percentile(energies, 10),
+            "total_energy_hi": percentile(energies, 90),
         }
     return results
 
@@ -909,22 +914,22 @@ def _draw_scenario_panel(ax_top, ax_bot, scen_name: str, sch_results: dict):
     for i, (sch_name, u_to_metrics) in enumerate(sch_results.items()):
         xs       = sorted(u_to_metrics.keys())
         xs_dodge = [x + (i - (n_sch - 1) / 2) * dx_step for x in xs]
-        ratio    = [u_to_metrics[u]["sched_ratio"]    for u in xs]
-        ratio_lo = [max(0, r - u_to_metrics[u]["sched_ratio_lo"]) for u, r in zip(xs, ratio)]
-        ratio_hi = [max(0, u_to_metrics[u]["sched_ratio_hi"] - r) for u, r in zip(xs, ratio)]
-        power    = [u_to_metrics[u]["total_power"]    for u in xs]
-        power_lo = [max(0, p - u_to_metrics[u]["total_power_lo"]) for u, p in zip(xs, power)]
-        power_hi = [max(0, u_to_metrics[u]["total_power_hi"] - p) for u, p in zip(xs, power)]
-        color    = colors[i % len(colors)]
-        ls       = linestyles[i % len(linestyles)]
-        mk       = markers[i % len(markers)]
+        ratio     = [u_to_metrics[u]["sched_ratio"]  for u in xs]
+        ratio_lo  = [max(0, r - u_to_metrics[u]["sched_ratio_lo"]) for u, r in zip(xs, ratio)]
+        ratio_hi  = [max(0, u_to_metrics[u]["sched_ratio_hi"] - r) for u, r in zip(xs, ratio)]
+        energy    = [u_to_metrics[u]["total_energy"] for u in xs]
+        energy_lo = [max(0, e - u_to_metrics[u]["total_energy_lo"]) for u, e in zip(xs, energy)]
+        energy_hi = [max(0, u_to_metrics[u]["total_energy_hi"] - e) for u, e in zip(xs, energy)]
+        color     = colors[i % len(colors)]
+        ls        = linestyles[i % len(linestyles)]
+        mk        = markers[i % len(markers)]
         ax_top.plot(xs, ratio, color=color, linestyle=ls, marker=mk,
                     markersize=7, linewidth=1.5, label=sch_name)
-        ax_bot.plot(xs, power, color=color, linestyle=ls, marker=mk,
+        ax_bot.plot(xs, energy, color=color, linestyle=ls, marker=mk,
                     markersize=7, linewidth=1.5, label=sch_name)
         ax_top.errorbar(xs_dodge, ratio, yerr=[ratio_lo, ratio_hi], fmt="none",
                         ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
-        ax_bot.errorbar(xs_dodge, power, yerr=[power_lo, power_hi], fmt="none",
+        ax_bot.errorbar(xs_dodge, energy, yerr=[energy_lo, energy_hi], fmt="none",
                         ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
     ax_top.set_title(scen_name)
     ax_top.set_ylim(-0.05, 1.05)
@@ -950,8 +955,8 @@ def plot_schedulability(results: dict):
     for col, scen_name in enumerate(scen_names):
         _draw_scenario_panel(axes[0, col], axes[1, col], scen_name, results[scen_name])
     axes[0, 0].set_ylabel("Schedulability ratio (met / total)")
-    axes[1, 0].set_ylabel("Total power (W)")
-    plt.suptitle("Schedulability and Total Power vs Utilization", fontsize=13)
+    axes[1, 0].set_ylabel("Energy (W·frame)")
+    plt.suptitle("Schedulability and Energy vs Utilization", fontsize=13)
     plt.tight_layout()
     out = os.path.join(TESTS_DIR, "results_schedulability.png")
     plt.savefig(out, dpi=150, bbox_inches="tight")
@@ -963,8 +968,8 @@ def plot_schedulability(results: dict):
         fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(7, 9), sharex=True)
         _draw_scenario_panel(ax_top, ax_bot, scen_name, results[scen_name])
         ax_top.set_ylabel("Schedulability ratio (met / total)")
-        ax_bot.set_ylabel("Total power (W)")
-        plt.suptitle(f"Schedulability and Total Power vs Utilization — {scen_name}", fontsize=12)
+        ax_bot.set_ylabel("Energy (W·frame)")
+        plt.suptitle(f"Schedulability and Energy vs Utilization — {scen_name}", fontsize=12)
         plt.tight_layout()
         out = os.path.join(TESTS_DIR, f"results_schedulability_{_safe_filename(scen_name)}.png")
         plt.savefig(out, dpi=150, bbox_inches="tight")
