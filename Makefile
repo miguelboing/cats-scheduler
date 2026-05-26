@@ -1,5 +1,5 @@
 CPP = g++
-CFLAGS =-Wall -I$(CURDIR) -I$(CURDIR)/libs
+CFLAGS =-Wall -O2 -I$(CURDIR) -I$(CURDIR)/libs
 
 ifndef $(BUILD_DIR)
 	BUILD_DIR=$(CURDIR)

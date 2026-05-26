@@ -4,10 +4,17 @@
 #SBATCH --job-name=cats-sweep
 #SBATCH --output=cats-%j.out
 #SBATCH --error=cats-%j.err
-#SBATCH --time=04:00:00
-#SBATCH --mem-per-cpu=2G
+#SBATCH --time=01:00:00
+#SBATCH --mem-per-cpu=1G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
+# Resource sizing (post -O2 + summary-mode optimization):
+#   - sweep @ 100k ticks, n_runs=2:   ~1 min wall on 32 CPUs
+#   - sweep @ 100k ticks, n_runs=50:  ~5 min  (prior default)
+#   - sweep @ 100k ticks, n_runs=500: ~45 min
+# Sweep mode keeps the worker memory footprint at tens of MB (no full log
+# parsed in Python). Tests mode parses ~180 MB JSON per worker — if running
+# tests with n_runs > 16 on this 32-CPU layout, raise --mem-per-cpu to 2G.
 
 # Submit with:
 #     sbatch run_aire.sh <run_name> [belief_threshold] [margin]

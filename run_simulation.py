@@ -91,7 +91,7 @@ BASE_CHANNELS = [
     }
 ]
 
-BASE_SIM = { "duration": 200 } # Sufficient for this steady state matrix
+BASE_SIM = { "duration": 100000 } # Sufficient for this steady state matrix
 
 def scenario_label(n: int, c_min: int, c_max: int,
                    sr_min: float, sr_max: float, U: Optional[float] = None) -> str:
@@ -768,20 +768,60 @@ def _run_single(args: tuple) -> dict:
                 pass
 
 def _run_single_sweep(args: tuple) -> dict:
-    """Sweep-mode worker: runs the sim, reduces to the two scalars sweep needs,
-    and drops the full metrics dict before returning. Keeps the parent's
-    memory footprint flat in `duration` — the per-tick arrays never cross
-    the pickle boundary.
+    """Sweep-mode worker: invokes main.o in 'summary' mode so the C++ side
+    silences stdout, skips per-frame JSON building, and emits only a tiny
+    aggregate (per-id generated/undelivered counts + total tx_power).
+    Bypasses extract_metrics entirely — at 100k ticks this was the dominant
+    cost of the sweep pipeline.
 
     `total_energy` is sum(tx_power) over all frames, in units of W·frame.
     Dimensionally equivalent to energy modulo the (unspecified) frame
     duration in seconds — same constant for every scheduler, so comparisons
     are unchanged."""
-    metrics = _run_single(args)
-    return {
-        "sched_ratio":  schedulability_ratio(metrics),
-        "total_energy": float(sum(metrics["tx_power"])),
-    }
+    test, run_id = args
+    config = make_config(test)
+    cfg_file = f"/tmp/sim_config_{os.getpid()}_{run_id}.json"
+    log_file = f"/tmp/sim_log_{os.getpid()}_{run_id}.json"
+    try:
+        with open(cfg_file, "w") as f:
+            json.dump(config, f)
+        result = subprocess.run([BINARY, cfg_file, log_file, "summary"],
+                                capture_output=True, check=False,
+                                cwd=SCRIPT_DIR)
+        if result.returncode != 0 or not os.path.exists(log_file):
+            raise RuntimeError(
+                f"{BINARY} failed (exit={result.returncode}) "
+                f"for run {run_id}.\n"
+                f"stderr: {result.stderr.decode(errors='replace')[-2000:]}\n"
+                f"stdout: {result.stdout.decode(errors='replace')[-500:]}"
+            )
+        with open(log_file) as f:
+            summary = json.load(f)
+
+        per_id = summary["per_id"]
+        if not per_id:
+            sched_ratio = 0.0
+        else:
+            met = 0
+            for entry in per_id:
+                gen = entry["generated"]
+                if gen <= 0:
+                    continue
+                ratio = 1 - entry["undelivered"] / gen
+                if ratio >= entry["success_rate_req"]:
+                    met += 1
+            sched_ratio = met / len(per_id)
+
+        return {
+            "sched_ratio":  sched_ratio,
+            "total_energy": float(summary["total_tx_power"]),
+        }
+    finally:
+        for path in (cfg_file, log_file):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
 
 # ── Multi-run averaging ───────────────────────────────────────────────────────
 
