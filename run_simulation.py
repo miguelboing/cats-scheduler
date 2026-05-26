@@ -896,62 +896,80 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
         }
     return results
 
-def plot_schedulability(results: dict):
+def _draw_scenario_panel(ax_top, ax_bot, scen_name: str, sch_results: dict):
+    """Render the ratio (top) and total-power (bottom) curves for one scenario
+    onto a pre-existing pair of axes. Shared between the combined plot and the
+    per-scenario plots so they stay in sync."""
     colors     = plt.cm.tab10.colors
     linestyles = ["-", "--", "-.", ":"]
     markers    = ["o", "s", "^", "D", "v", "P", "X"]
+    n_sch      = len(SCHEDULERS)
+    dx_step    = 0.012  # horizontal dodge between schedulers (in U units)
+
+    for i, (sch_name, u_to_metrics) in enumerate(sch_results.items()):
+        xs       = sorted(u_to_metrics.keys())
+        xs_dodge = [x + (i - (n_sch - 1) / 2) * dx_step for x in xs]
+        ratio    = [u_to_metrics[u]["sched_ratio"]    for u in xs]
+        ratio_lo = [max(0, r - u_to_metrics[u]["sched_ratio_lo"]) for u, r in zip(xs, ratio)]
+        ratio_hi = [max(0, u_to_metrics[u]["sched_ratio_hi"] - r) for u, r in zip(xs, ratio)]
+        power    = [u_to_metrics[u]["total_power"]    for u in xs]
+        power_lo = [max(0, p - u_to_metrics[u]["total_power_lo"]) for u, p in zip(xs, power)]
+        power_hi = [max(0, u_to_metrics[u]["total_power_hi"] - p) for u, p in zip(xs, power)]
+        color    = colors[i % len(colors)]
+        ls       = linestyles[i % len(linestyles)]
+        mk       = markers[i % len(markers)]
+        ax_top.plot(xs, ratio, color=color, linestyle=ls, marker=mk,
+                    markersize=7, linewidth=1.5, label=sch_name)
+        ax_bot.plot(xs, power, color=color, linestyle=ls, marker=mk,
+                    markersize=7, linewidth=1.5, label=sch_name)
+        ax_top.errorbar(xs_dodge, ratio, yerr=[ratio_lo, ratio_hi], fmt="none",
+                        ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
+        ax_bot.errorbar(xs_dodge, power, yerr=[power_lo, power_hi], fmt="none",
+                        ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
+    ax_top.set_title(scen_name)
+    ax_top.set_ylim(-0.05, 1.05)
+    ax_top.grid(True, alpha=0.3)
+    ax_top.legend()
+    ax_bot.set_xlabel("Utilization U")
+    ax_bot.grid(True, alpha=0.3)
+    ax_bot.legend()
+
+def _safe_filename(s: str) -> str:
+    """Make a scenario label safe to use as a filename component."""
+    return s.replace("[", "").replace("]", "").replace(",", "_").replace("=", "")
+
+def plot_schedulability(results: dict):
     scen_names = list(results.keys())
     n_scen     = len(scen_names)
+    os.makedirs(TESTS_DIR, exist_ok=True)
 
+    # Combined figure: one column per scenario.
     fig, axes = plt.subplots(2, n_scen, figsize=(6 * n_scen, 9), sharex="col")
     if n_scen == 1:
         axes = axes.reshape(2, 1)
-
-    n_sch    = len(SCHEDULERS)
-    dx_step  = 0.012  # horizontal dodge between schedulers (in U units)
-
     for col, scen_name in enumerate(scen_names):
-        ax_top = axes[0, col]
-        ax_bot = axes[1, col]
-        for i, (sch_name, u_to_metrics) in enumerate(results[scen_name].items()):
-            xs       = sorted(u_to_metrics.keys())
-            xs_dodge = [x + (i - (n_sch - 1) / 2) * dx_step for x in xs]
-            ratio    = [u_to_metrics[u]["sched_ratio"]    for u in xs]
-            ratio_lo = [max(0, r - u_to_metrics[u]["sched_ratio_lo"]) for u, r in zip(xs, ratio)]
-            ratio_hi = [max(0, u_to_metrics[u]["sched_ratio_hi"] - r) for u, r in zip(xs, ratio)]
-            power    = [u_to_metrics[u]["total_power"]    for u in xs]
-            power_lo = [max(0, p - u_to_metrics[u]["total_power_lo"]) for u, p in zip(xs, power)]
-            power_hi = [max(0, u_to_metrics[u]["total_power_hi"] - p) for u, p in zip(xs, power)]
-            color    = colors[i % len(colors)]
-            ls       = linestyles[i % len(linestyles)]
-            mk       = markers[i % len(markers)]
-            # Mean line (no dodge, runs through the true U) for clean shape
-            ax_top.plot(xs, ratio, color=color, linestyle=ls, marker=mk,
-                        markersize=7, linewidth=1.5, label=sch_name)
-            ax_bot.plot(xs, power, color=color, linestyle=ls, marker=mk,
-                        markersize=7, linewidth=1.5, label=sch_name)
-            # Dodged percentile bars on top, no connector line
-            ax_top.errorbar(xs_dodge, ratio, yerr=[ratio_lo, ratio_hi], fmt="none",
-                            ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
-            ax_bot.errorbar(xs_dodge, power, yerr=[power_lo, power_hi], fmt="none",
-                            ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
-        ax_top.set_title(scen_name)
-        ax_top.set_ylim(-0.05, 1.05)
-        ax_top.grid(True, alpha=0.3)
-        ax_top.legend()
-        ax_bot.set_xlabel("Utilization U")
-        ax_bot.grid(True, alpha=0.3)
-        ax_bot.legend()
-
+        _draw_scenario_panel(axes[0, col], axes[1, col], scen_name, results[scen_name])
     axes[0, 0].set_ylabel("Schedulability ratio (met / total)")
     axes[1, 0].set_ylabel("Total power (W)")
     plt.suptitle("Schedulability and Total Power vs Utilization", fontsize=13)
     plt.tight_layout()
-    os.makedirs(TESTS_DIR, exist_ok=True)
     out = os.path.join(TESTS_DIR, "results_schedulability.png")
     plt.savefig(out, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Schedulability plot saved to {out}")
+
+    # Per-scenario figures: same two-panel layout, one PNG each.
+    for scen_name in scen_names:
+        fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(7, 9), sharex=True)
+        _draw_scenario_panel(ax_top, ax_bot, scen_name, results[scen_name])
+        ax_top.set_ylabel("Schedulability ratio (met / total)")
+        ax_bot.set_ylabel("Total power (W)")
+        plt.suptitle(f"Schedulability and Total Power vs Utilization — {scen_name}", fontsize=12)
+        plt.tight_layout()
+        out = os.path.join(TESTS_DIR, f"results_schedulability_{_safe_filename(scen_name)}.png")
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Schedulability plot saved to {out}")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
