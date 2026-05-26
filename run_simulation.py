@@ -1045,6 +1045,67 @@ def plot_schedulability(results: dict):
         plt.close()
         print(f"Schedulability plot saved to {out}")
 
+# ── Experiment metadata ───────────────────────────────────────────────────────
+
+def write_experiment_params(mode: str, n_runs: int, run_name: Optional[str]) -> None:
+    """Dump every input that affects the simulation to a JSON file in cwd
+    (which the caller has already chdir'd to tests/<run_name>). Captures
+    scheduler configs (post CLI overrides), scenarios relevant to the mode,
+    BASE_SIM, channels, the master seed if set, and the current git commit.
+    Together with the matching SEED this is enough to re-run identically."""
+    params = {
+        "run_name":    run_name,
+        "mode":        mode,
+        "n_runs":      n_runs,
+        "master_seed": MASTER_SEED,
+        "started_at":  time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "simulation":  BASE_SIM,
+        "schedulers":  {name: cfg for name, cfg in SCHEDULERS},
+        "channels":    BASE_CHANNELS,
+    }
+
+    if mode == "sweep":
+        params["scenarios"] = {
+            "SWEEP_SCENARIOS": [
+                {"n": n, "c_min": c_min, "c_max": c_max,
+                 "sr_min": sr_min, "sr_max": sr_max}
+                for n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS
+            ],
+            "U_VALUES": U_VALUES,
+        }
+    else:
+        params["scenarios"] = {
+            "SCENARIOS": [
+                {"U": U, "n": n, "c_min": c_min, "c_max": c_max,
+                 "sr_min": sr_min, "sr_max": sr_max}
+                for U, n, c_min, c_max, sr_min, sr_max in SCENARIOS
+            ],
+        }
+
+    # Git commit — adds code-level reproducibility. Suppress failure if not
+    # in a git repo or git isn't on PATH; the metadata is still useful.
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=SCRIPT_DIR, capture_output=True, text=True, check=False
+        )
+        commit = proc.stdout.strip()
+        if commit:
+            params["git_commit"] = commit
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=SCRIPT_DIR, capture_output=True, text=True, check=False
+        ).stdout.strip()
+        if dirty:
+            params["git_dirty"] = True
+    except FileNotFoundError:
+        pass
+
+    out_path = "experiment_params.json"
+    with open(out_path, "w") as f:
+        json.dump(params, f, indent=2)
+    print(f"Experiment parameters saved to {os.path.abspath(out_path)}")
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def format_duration(seconds: float) -> str:
@@ -1085,6 +1146,11 @@ if __name__ == "__main__":
         os.chdir(target)
         TESTS_DIR = "."   # already inside tests/<run_name>, don't nest another tests/
         print(f"Outputs will be written under: {os.path.abspath('.')}")
+
+    # Snapshot every parameter that affects the run. Called after CLI
+    # overrides have mutated BASE_CATS_SCHEDULER, so the dump reflects the
+    # values actually used.
+    write_experiment_params(mode, n_runs, run_name)
 
     t_start = time.perf_counter()
 
