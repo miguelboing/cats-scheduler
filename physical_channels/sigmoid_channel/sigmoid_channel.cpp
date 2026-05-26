@@ -79,3 +79,15 @@ int SigmoidChannel::get_fsmc_state(void)
     return this->mc.current();
 }
 
+void SigmoidChannel::seed_rng(uint64_t seed)
+{
+    // Distinct sub-seeds for the two streams (initial-state draw and the
+    // FSMC transition RNG) to keep them statistically independent.
+    this->generator.seed(seed);
+    this->mc.seed(seed ^ 0x9E3779B97F4A7C15ULL);
+
+    // Re-pick the initial state using the now-deterministic generator.
+    std::uniform_int_distribution<int> distribution(0, 5);
+    this->mc.setState(distribution(this->generator));
+}
+

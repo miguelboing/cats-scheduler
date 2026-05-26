@@ -9,6 +9,7 @@
 #include <utility>
 #include <algorithm>
 #include <streambuf>
+#include <cstdint>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
@@ -81,12 +82,25 @@ int main(int argc, char* argv[])
         }
     }
 
+    // Optional master seed for reproducibility. When present, every RNG is
+    // reseeded with a distinct offset so streams stay independent.
+    const bool has_seed   = config["simulation"].contains("seed");
+    const uint64_t seed   = has_seed ? config["simulation"]["seed"].get<uint64_t>() : 0;
+
     /* Initialize channels from config */
     std::shared_ptr<std::vector<SigmoidChannel>> channels = std::make_shared<std::vector<SigmoidChannel>>();
-    for (const auto& ch : config["channels"])
     {
-        if (ch["type"] == "sigmoid")
-            channels->emplace_back(ch["frequency"], ch["name"]);
+        size_t ch_idx = 0;
+        for (const auto& ch : config["channels"])
+        {
+            if (ch["type"] == "sigmoid")
+            {
+                channels->emplace_back(ch["frequency"], ch["name"]);
+                if (has_seed)
+                    channels->back().seed_rng(seed + 0x100 + ch_idx);
+            }
+            ++ch_idx;
+        }
     }
 
     /* Initialize scheduler from config */
@@ -150,6 +164,7 @@ int main(int argc, char* argv[])
 
     /* Initialize the target receiver */
     TargetReceiver target_receiver(system_tick);
+    if (has_seed) target_receiver.seed_rng(seed + 0x200);
     received_frame_t recv_frame;
 
     const unsigned int duration = config["simulation"]["duration"];

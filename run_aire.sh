@@ -20,6 +20,8 @@
 #     sbatch run_aire.sh <run_name> [belief_threshold] [margin]
 # Override defaults via --export, e.g.:
 #     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name> [belief_threshold] [margin]
+# Reproducible run (same SEED → bit-identical output PNGs):
+#     sbatch --export=SEED=42,ALL run_aire.sh <run_name>
 
 set -euo pipefail
 

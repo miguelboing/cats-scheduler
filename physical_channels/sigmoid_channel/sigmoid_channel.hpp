@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <kovian/kovian.hpp>
 
 #include "physical_channels/base_physical_channel.hpp"
@@ -16,6 +17,10 @@ public:
     received_frame_t gen_frame_with_probability(transmitted_frame_t transmitted_frame) override;
     void advance_fsmc_state(void);
     int get_fsmc_state(void);
+
+    // Reseed the channel's RNGs (initial-state draw + kovian transitions) and
+    // re-pick the initial state deterministically. Call after construction.
+    void seed_rng(uint64_t seed);
 
     std::vector<markov_state_t> fsmc;
     kovian::MarkovChain<6> mc;

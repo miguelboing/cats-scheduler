@@ -46,3 +46,8 @@ void TargetReceiver::save_to_file(const std::string& filename)
     file << frame_log.dump(4);
 }
 
+void TargetReceiver::seed_rng(uint64_t seed)
+{
+    generator.seed(seed);
+}
+

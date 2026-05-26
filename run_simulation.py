@@ -2,6 +2,7 @@ import json
 import sys
 import os
 import copy
+import hashlib
 import random
 import subprocess
 import tempfile
@@ -14,6 +15,20 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 TESTS_DIR = "tests"
+
+# Master seed for reproducible runs. Read once at import time from the SEED
+# env var. When None, behavior is non-deterministic (clock-based RNG in C++,
+# unseeded random module in Python) — matches the pre-seed baseline.
+MASTER_SEED: Optional[int] = int(os.environ["SEED"]) if os.environ.get("SEED") else None
+
+def derive_seed(master: int, test_name: str, run_idx: int) -> int:
+    """Stable 63-bit seed per (master, test_name, run_idx). Using blake2b
+    rather than a linear mixing function so reordering of jobs in the pool
+    can't accidentally produce correlated streams. Mask to int63 so the
+    value round-trips cleanly through JSON / nlohmann's signed int64 path."""
+    h = hashlib.blake2b(f"{master}|{test_name}|{run_idx}".encode(),
+                        digest_size=8).digest()
+    return int.from_bytes(h, "little") & 0x7FFF_FFFF_FFFF_FFFF
 
 # ── UUniFast task-set generator ───────────────────────────────────────────────
 
@@ -53,9 +68,17 @@ def uunifast_packets(n: int, U: float, c_min: int, c_max: int,
         })
     return packets
 
-def make_config(test: dict) -> dict:
+def make_config(test: dict, seed: Optional[int] = None) -> dict:
     """Resolve a test definition into a concrete simulator config. If a
-    'uunifast' spec is present, a fresh packet_generators block is drawn."""
+    'uunifast' spec is present, a fresh packet_generators block is drawn.
+
+    When `seed` is given, Python's random module is seeded *before* the
+    UUniFast draw so the generated task set is deterministic, and the same
+    seed is injected into config["simulation"]["seed"] so the C++ side
+    reseeds its three RNGs (target receiver, channel initial state, kovian
+    transitions) with derived sub-seeds."""
+    if seed is not None:
+        random.seed(seed)
     config = copy.deepcopy(test["config"])
     if "uunifast" in test:
         spec = test["uunifast"]
@@ -65,6 +88,8 @@ def make_config(test: dict) -> dict:
                                         spec["c_min"],  spec["c_max"],
                                         spec["sr_min"], spec["sr_max"]),
         }]
+    if seed is not None:
+        config["simulation"] = dict(config["simulation"], seed=int(seed))
     return config
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -272,8 +297,8 @@ def print_test_summary(test: dict):
             print(f"     id={p['id']}  period={p['period']}  deadline={p['relative_deadline']}"
                   f"  frames={p['frames']}  success_rate={p['success_rate']}  phase={p['phase']}")
 
-def run_test(test: dict) -> tuple[list["Frame"], dict]:
-    config = make_config(test)
+def run_test(test: dict, seed: Optional[int] = None) -> tuple[list["Frame"], dict]:
+    config = make_config(test, seed=seed)
     print_test_summary({ "name": test["name"], "config": config })
     cfg_path = os.path.abspath(CONFIG_FILE)
     log_path = os.path.abspath(LOG_FILE)
@@ -740,9 +765,11 @@ def schedulability_ratio(metrics: dict) -> float:
 def _run_single(args: tuple) -> dict:
     """Run one simulation in a temp file pair and return extracted metrics.
     Designed to be called from a worker process. Resolves UUniFast specs
-    fresh per call so rounding drift averages over runs."""
-    test, run_id = args
-    config = make_config(test)
+    fresh per call so rounding drift averages over runs. When a seed is
+    supplied it is used to make both the task draw and the C++ RNGs
+    deterministic for this single sim."""
+    test, run_id, seed = args
+    config = make_config(test, seed=seed)
     cfg_file = f"/tmp/sim_config_{os.getpid()}_{run_id}.json"
     log_file = f"/tmp/sim_log_{os.getpid()}_{run_id}.json"
     try:
@@ -778,8 +805,8 @@ def _run_single_sweep(args: tuple) -> dict:
     Dimensionally equivalent to energy modulo the (unspecified) frame
     duration in seconds — same constant for every scheduler, so comparisons
     are unchanged."""
-    test, run_id = args
-    config = make_config(test)
+    test, run_id, seed = args
+    config = make_config(test, seed=seed)
     cfg_file = f"/tmp/sim_config_{os.getpid()}_{run_id}.json"
     log_file = f"/tmp/sim_log_{os.getpid()}_{run_id}.json"
     try:
@@ -894,8 +921,10 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
                         "sr_min": sr_min, "sr_max": sr_max,
                     },
                 }
-                for _ in range(n_runs):
-                    jobs.append(((scen_name, U, sch_name), test))
+                for run_idx in range(n_runs):
+                    sim_seed = (derive_seed(MASTER_SEED, test["name"], run_idx)
+                                if MASTER_SEED is not None else None)
+                    jobs.append(((scen_name, U, sch_name), test, run_idx, sim_seed))
 
     total = len(jobs)
     print(f"  [sweep] dispatching {total} sims "
@@ -905,8 +934,8 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
     combo_runs = defaultdict(list)
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         futures = {
-            executor.submit(_run_single_sweep, (test, job_idx)): key
-            for job_idx, (key, test) in enumerate(jobs)
+            executor.submit(_run_single_sweep, (test, job_idx, sim_seed)): key
+            for job_idx, (key, test, _run_idx, sim_seed) in enumerate(jobs)
         }
         done = 0
         for future in as_completed(futures):
@@ -1043,6 +1072,13 @@ if __name__ == "__main__":
         BASE_CATS_SCHEDULER["margin"] = margin
         print(f"CATS margin overridden to {margin}")
 
+    if MASTER_SEED is not None:
+        print(f"SEED={MASTER_SEED} — per-sim seeds derived deterministically; "
+              f"runs are reproducible")
+    else:
+        print("SEED unset — runs are non-deterministic "
+              "(set SEED=<int> env var for reproducibility)")
+
     if run_name:
         target = os.path.join(TESTS_DIR, run_name)
         os.makedirs(target, exist_ok=True)
@@ -1065,11 +1101,17 @@ if __name__ == "__main__":
 
     for test in TESTS:
         if n_runs == 1:
-            frames, display_config = run_test(test)
+            sim_seed = (derive_seed(MASTER_SEED, test["name"], 0)
+                        if MASTER_SEED is not None else None)
+            frames, display_config = run_test(test, seed=sim_seed)
             run_metrics = [extract_metrics(frames, display_config)]
         else:
             print(f"  [{test['name']}] dispatching {n_runs} runs ...", flush=True)
-            args = [(test, i) for i in range(n_runs)]
+            args = [
+                (test, i,
+                 derive_seed(MASTER_SEED, test["name"], i) if MASTER_SEED is not None else None)
+                for i in range(n_runs)
+            ]
             run_metrics = [None] * n_runs
             with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 futures = {executor.submit(_run_single, a): i for i, a in enumerate(args)}
@@ -1079,7 +1121,11 @@ if __name__ == "__main__":
                     done += 1
                     print(f"  [{test['name']}] {done}/{n_runs} done", end="\r", flush=True)
             print()
-            display_config = make_config(test)
+            # For the printed summary, regenerate with the *first* run's seed so
+            # display_config matches what run 0 actually saw.
+            first_seed = (derive_seed(MASTER_SEED, test["name"], 0)
+                          if MASTER_SEED is not None else None)
+            display_config = make_config(test, seed=first_seed)
 
         metrics        = average_metrics(run_metrics) if n_runs > 1 else run_metrics[0]
         scheduler_type = test["config"]["scheduler"]["type"]

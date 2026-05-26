@@ -62,6 +62,8 @@ namespace kovian {
 			if(x >= N) throw std::runtime_error("Tried to assign state " + std::to_string(x) + " to Markov chain with only " + std::to_string(N) + " states.");
 			state = x;
 		}
+		// Reseed the transition RNG for deterministic replication.
+		void seed(uint64_t s) { rng.seed(s); }
 	private:
 		size_t state;
 		std::default_random_engine rng;

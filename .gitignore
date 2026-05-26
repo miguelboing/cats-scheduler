@@ -2,6 +2,7 @@ main
 bin/
 *.json
 *.png
+__pycache__
 
 # Prerequisites
 *.d

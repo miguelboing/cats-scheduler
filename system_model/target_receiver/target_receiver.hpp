@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <random>
 #include <vector>
 
@@ -18,6 +19,9 @@ public:
     std::shared_ptr<unsigned int> system_tick;
 
     void save_to_file(const std::string& filename);
+
+    // Reseed the bernoulli draw RNG for deterministic replication.
+    void seed_rng(uint64_t seed);
 
 private:
     json frame_log;  /* Stores all received packets */
