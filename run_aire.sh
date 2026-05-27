@@ -4,7 +4,7 @@
 #SBATCH --job-name=cats-sweep
 #SBATCH --output=cats-%j.out
 #SBATCH --error=cats-%j.err
-#SBATCH --time=01:00:00
+#SBATCH --time=5:00:00
 #SBATCH --mem-per-cpu=1G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
