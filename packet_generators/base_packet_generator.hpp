@@ -33,11 +33,16 @@ public:
 
     virtual std::string get_name() const = 0;
 
+    /* Toggle per-spawn logging into packet_gen_log. Disable in summary mode
+       to keep memory flat across long-duration runs. */
+    void set_log_enabled(bool enabled) { log_enabled = enabled; }
+
     static void save_to_file(std::shared_ptr<json> log, const std::string& filename);
 
 protected:
     void add_packet_to_buffer(packet_t& packet);
     std::unordered_map<unsigned int, unsigned int> packet_count_map; /* Maps ID-> count */
+    bool log_enabled = true;
 };
 
 inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
@@ -47,18 +52,21 @@ inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
     packet.frame_count = 0U;
 
     /* Log the spawn event */
-    json spawn_entry = {
-        {"system_tick", *(this->system_tick)},
-        {"packet_id", packet.id},
-        {"packet_id_count", packet.id_count},
-        {"deadline", packet.deadline},
-        {"frames", packet.frames},
-        {"success_rate_req", packet.success_rate_req},
-        {"is_periodic", packet.is_periodic},
-        {"period", packet.period},
-        {"generator_type", this->get_name()}  /* Track which generator spawned it */
-    };
-    this->packet_gen_log->push_back(spawn_entry);
+    if (this->log_enabled)
+    {
+        json spawn_entry = {
+            {"system_tick", *(this->system_tick)},
+            {"packet_id", packet.id},
+            {"packet_id_count", packet.id_count},
+            {"deadline", packet.deadline},
+            {"frames", packet.frames},
+            {"success_rate_req", packet.success_rate_req},
+            {"is_periodic", packet.is_periodic},
+            {"period", packet.period},
+            {"generator_type", this->get_name()}  /* Track which generator spawned it */
+        };
+        this->packet_gen_log->push_back(spawn_entry);
+    }
 
     /* Spawn a packet to the buffer */
     this->buffer_packet->push_back(packet);

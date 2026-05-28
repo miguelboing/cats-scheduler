@@ -23,8 +23,13 @@ public:
     // Reseed the bernoulli draw RNG for deterministic replication.
     void seed_rng(uint64_t seed);
 
+    /* Toggle per-frame logging. Disable in summary mode so the per-binary
+       memory footprint stays flat across long-duration runs. */
+    void set_log_enabled(bool enabled) { log_enabled = enabled; }
+
 private:
     json frame_log;  /* Stores all received packets */
+    bool log_enabled = true;
 
     std::default_random_engine generator;
 };

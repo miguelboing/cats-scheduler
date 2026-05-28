@@ -79,6 +79,7 @@ int main(int argc, char* argv[])
                 ));
             }
             packet_gens.emplace_back(system_tick, packets, buffer.buffer_packet, spawn_log);
+            if (summary_only) packet_gens.back().set_log_enabled(false);
         }
     }
 
@@ -152,6 +153,8 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    if (summary_only) scheduler->set_log_enabled(false);
+
     scheduled_frame_t scheduled_frame;
 
     /* Initialize the radio_interface */
@@ -165,6 +168,7 @@ int main(int argc, char* argv[])
     /* Initialize the target receiver */
     TargetReceiver target_receiver(system_tick);
     if (has_seed) target_receiver.seed_rng(seed + 0x200);
+    if (summary_only) target_receiver.set_log_enabled(false);
     received_frame_t recv_frame;
 
     const unsigned int duration = config["simulation"]["duration"];

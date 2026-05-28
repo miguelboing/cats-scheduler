@@ -25,6 +25,10 @@ public:
 
     void save_to_file(void);
 
+    /* Toggle per-frame logging. Disabling skips building and storing the
+       frame_entry JSON, which dominates per-binary memory at high tick counts. */
+    void set_log_enabled(bool enabled) { log_enabled = enabled; }
+
     /* Pure virtual functions that all schedulers must implement */
 virtual std::string get_name() const = 0;
 
@@ -43,6 +47,7 @@ private:
     virtual scheduled_frame_t do_schedule_frame(void) = 0;
 
     json frame_log;  /* Stores all received packets */
+    bool log_enabled = true;
 };
 
 inline BaseScheduler::BaseScheduler(BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick):
@@ -63,11 +68,11 @@ inline void BaseScheduler::receive_prediction(const std::vector<double>& pred_pr
 
 inline scheduled_frame_t BaseScheduler::schedule_frame(void)
 {
-    scheduled_frame_t scheduled_frame;
+    scheduled_frame_t scheduled_frame = this->do_schedule_frame();
+
+    if (!this->log_enabled) return scheduled_frame;
+
     json frame_entry;
-
-    scheduled_frame = this->do_schedule_frame();
-
     switch (scheduled_frame.radio_mode)
     {
         case TX_MODE:

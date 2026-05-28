@@ -3,11 +3,12 @@ import sys
 import os
 import copy
 import hashlib
+import multiprocessing as mp
 import random
 import subprocess
 import tempfile
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, FIRST_COMPLETED, as_completed, wait
 from dataclasses import dataclass
 from typing import Optional
 from collections import defaultdict
@@ -931,19 +932,47 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
           f"({len(SWEEP_SCENARIOS)} scen x {len(U_VALUES)} U x "
           f"{len(SCHEDULERS)} sch x {n_runs} runs)", flush=True)
 
+    # Use spawn so child interpreters start clean — without 'spawn', forked
+    # workers inherit the parent's matplotlib/numpy state via COW which gets
+    # ref-counted into real allocations very quickly, doubling resident memory.
+    ctx = mp.get_context("spawn")
+
+    # Keep a bounded number of futures in flight (~4*workers). Submitting all
+    # 45k up front pickles the args into the internal queue eagerly, adding
+    # tens of MB of dead weight to the parent for the whole run.
+    window = max(4 * n_workers, n_workers + 8)
+
     combo_runs = defaultdict(list)
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        futures = {
-            executor.submit(_run_single_sweep, (test, job_idx, sim_seed)): key
-            for job_idx, (key, test, _run_idx, sim_seed) in enumerate(jobs)
-        }
+    with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as executor:
+        in_flight = {}   # future -> key
+        job_iter  = iter(jobs)
         done = 0
-        for future in as_completed(futures):
-            key = futures[future]
-            combo_runs[key].append(future.result())
-            done += 1
-            if done % max(1, total // 50) == 0 or done == total:
-                print(f"  [sweep] {done}/{total} done", end="\r", flush=True)
+
+        # Prime the window.
+        for _ in range(min(window, total)):
+            try:
+                key, test, _run_idx, sim_seed = next(job_iter)
+            except StopIteration:
+                break
+            fut = executor.submit(_run_single_sweep, (test, done + len(in_flight), sim_seed))
+            in_flight[fut] = key
+
+        while in_flight:
+            finished, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                key = in_flight.pop(fut)
+                combo_runs[key].append(fut.result())
+                done += 1
+                if done % max(1, total // 50) == 0 or done == total:
+                    print(f"  [sweep] {done}/{total} done", end="\r", flush=True)
+                # Top up the window with the next job, if any.
+                try:
+                    key, test, _run_idx, sim_seed = next(job_iter)
+                except StopIteration:
+                    continue
+                fut2 = executor.submit(_run_single_sweep,
+                                       (test, done + len(in_flight), sim_seed))
+                in_flight[fut2] = key
     print()
 
     def percentile(xs, p):
