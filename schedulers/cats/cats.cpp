@@ -69,7 +69,8 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
         {
             const unsigned int power_levels[3] = {1, 10, 25};
             unsigned int key = lowest_it->id_count;
-            double req       = lowest_it->success_rate_req;
+            double req       = std::pow(lowest_it->success_rate_req,
+                                        1.0 / lowest_it->frames);
 
             /* Get or initialise accumulated probability for this packet instance */
             double acc = (accumulated_prob.find(key) != accumulated_prob.end())
