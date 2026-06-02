@@ -22,7 +22,9 @@ using json = nlohmann::json;
 #include "system_model/ml_predictor/ml_predictor.hpp"
 
 #include "packet_generators/fixed_rate/fixed_rate.hpp"
+#include "physical_channels/base_physical_channel.hpp"
 #include "physical_channels/sigmoid_channel/sigmoid_channel.hpp"
+#include "physical_channels/replay_channel/replay_channel.hpp"
 
 #include "schedulers.hpp"
 
@@ -89,16 +91,22 @@ int main(int argc, char* argv[])
     const uint64_t seed   = has_seed ? config["simulation"]["seed"].get<uint64_t>() : 0;
 
     /* Initialize channels from config */
-    std::shared_ptr<std::vector<SigmoidChannel>> channels = std::make_shared<std::vector<SigmoidChannel>>();
+    auto channels = std::make_shared<std::vector<std::unique_ptr<BasePhysicalChannel>>>();
     {
         size_t ch_idx = 0;
         for (const auto& ch : config["channels"])
         {
             if (ch["type"] == "sigmoid")
             {
-                channels->emplace_back(ch["frequency"], ch["name"]);
-                if (has_seed)
-                    channels->back().seed_rng(seed + 0x100 + ch_idx);
+                auto sc = std::make_unique<SigmoidChannel>(ch["frequency"], ch["name"]);
+                if (has_seed) sc->seed_rng(seed + 0x100 + ch_idx);
+                channels->emplace_back(std::move(sc));
+            }
+            else if (ch["type"] == "replay")
+            {
+                auto rc = std::make_unique<ReplayChannel>(
+                    ch["frequency"], ch["csv_path"].get<std::string>(), system_tick);
+                channels->emplace_back(std::move(rc));
             }
             ++ch_idx;
         }
@@ -256,13 +264,13 @@ int main(int argc, char* argv[])
                 }
 
                 auto it = std::find_if(channels->begin(), channels->end(),
-                                        [&transmitted_frame](const SigmoidChannel& ch) {
-                                            return ch.frequency == transmitted_frame.frequency;
+                                        [&transmitted_frame](const std::unique_ptr<BasePhysicalChannel>& ch) {
+                                            return ch->frequency == transmitted_frame.frequency;
                                         });
 
                 if (it != channels->end())
                 {
-                    recv_frame = it->gen_frame_with_probability(transmitted_frame);
+                    recv_frame = (*it)->gen_frame_with_probability(transmitted_frame);
                     bool received = target_receiver.recv_frame(recv_frame);
 
                     if (summary_only)
@@ -423,29 +431,32 @@ int main(int argc, char* argv[])
         }
         for (auto& ch : *channels)
         {
-            int fsmc_state = ch.get_fsmc_state();
-            if (!summary_only)
+            /* FSMC details are sigmoid-channel specific; other channel types
+               (e.g. ReplayChannel) carry no Markov state. */
+            SigmoidChannel* sc = dynamic_cast<SigmoidChannel*>(ch.get());
+            if (sc && !summary_only)
             {
-                std::cout << "Frequency: " << ch.frequency << std::endl;
+                int fsmc_state = sc->get_fsmc_state();
+                std::cout << "Frequency: " << sc->frequency << std::endl;
                 std::cout << "State: " << fsmc_state << std::endl;
                 std::cout << "Parameters"
-                          << "\nSlope: " << ch.fsmc[fsmc_state].slope
-                          << "\nSNR@50% [dB]: " << ch.fsmc[fsmc_state].snr_50_db
-                          << "\nMax Saturation: " << ch.fsmc[fsmc_state].max_saturation
-                          << "\nNoise Floor [dBm]: " << ch.fsmc[fsmc_state].noise_floor_dbm;
+                          << "\nSlope: " << sc->fsmc[fsmc_state].slope
+                          << "\nSNR@50% [dB]: " << sc->fsmc[fsmc_state].snr_50_db
+                          << "\nMax Saturation: " << sc->fsmc[fsmc_state].max_saturation
+                          << "\nNoise Floor [dBm]: " << sc->fsmc[fsmc_state].noise_floor_dbm;
                 std::cout << std::endl << std::endl;
 
                 frame_entry["fsmc"].push_back({
-                    {"frequency",       ch.frequency},
+                    {"frequency",       sc->frequency},
                     {"state",           fsmc_state},
-                    {"slope",           ch.fsmc[fsmc_state].slope},
-                    {"snr_50_db",       ch.fsmc[fsmc_state].snr_50_db},
-                    {"max_saturation",  ch.fsmc[fsmc_state].max_saturation},
-                    {"noise_floor_dbm", ch.fsmc[fsmc_state].noise_floor_dbm}
+                    {"slope",           sc->fsmc[fsmc_state].slope},
+                    {"snr_50_db",       sc->fsmc[fsmc_state].snr_50_db},
+                    {"max_saturation",  sc->fsmc[fsmc_state].max_saturation},
+                    {"noise_floor_dbm", sc->fsmc[fsmc_state].noise_floor_dbm}
                 });
             }
 
-            ch.advance_fsmc_state();
+            ch->advance_fsmc_state();
         }
 
         if (!summary_only) simulation_log.push_back(frame_entry);
