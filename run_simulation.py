@@ -133,9 +133,9 @@ def scenario_label(n: int, c_min: int, c_max: int,
 
 # Each scenario: (U, n, c_min, c_max, sr_min, sr_max)
 SCENARIOS = [
-    (0.10, 2,  1, 3, 0.50, 0.70),
-    (0.25, 5,  1, 3, 0.50, 0.70),
-    (0.50, 8,  1, 3, 0.50, 0.70),
+    (0.10, 2,  1, 3, 0.50, 0.90),
+    (0.25, 5,  1, 3, 0.50, 0.90),
+    (0.50, 8,  1, 3, 0.50, 0.90),
 ]
 
 SCHEDULERS = [
