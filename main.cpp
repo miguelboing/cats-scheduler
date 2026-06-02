@@ -147,10 +147,20 @@ int main(int argc, char* argv[])
     }
     else if (sched_type == "CATS")
     {
+        /* CATS is aware of the periodic task set so it can size demand/U
+           against the horizon. Aggregate across all generators. */
+        std::vector<periodic_task_t> periodic_tasks;
+        for (const auto& gen : packet_gens)
+        {
+            auto t = gen.get_periodic_tasks();
+            periodic_tasks.insert(periodic_tasks.end(), t.begin(), t.end());
+        }
+
         scheduler = std::make_unique<CATS_scheduler>(
             sched_cfg["frequency"],
             sched_cfg["belief_threshold"],
-            sched_cfg["margin"],
+            sched_cfg["utilization_threshold"],
+            periodic_tasks,
             &buffer,
             system_tick
         );

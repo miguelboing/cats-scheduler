@@ -1,16 +1,70 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <cmath>
+#include <limits>
 
 #include "cats.hpp"
 
 
-CATS_scheduler::CATS_scheduler(unsigned int frequency, float belief_threshold, double margin, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), frequency(frequency), belief_threshold(belief_threshold), margin(margin)
+CATS_scheduler::CATS_scheduler(unsigned int frequency,
+                               float belief_threshold,
+                               double utilization_threshold,
+                               const std::vector<periodic_task_t>& periodic_tasks,
+                               BufferPacket* buffer,
+                               std::shared_ptr<unsigned int> sys_tick):
+    BaseScheduler(buffer, sys_tick),
+    frequency(frequency),
+    belief_threshold(belief_threshold),
+    periodic_tasks(periodic_tasks),
+    horizon_H(0U),
+    utilization_threshold(utilization_threshold),
+    max_power_idx(2U)
 {
     this->transmission_prob[0] = this->transmission_prob[1] = this->transmission_prob[2] = 0.0;
     this->belief = 0.0;
     this->retransmissions_per_frame = 1U; /* TODO: estimate from channel prediction */
     this->eigenvalue = 0.99015;
+
+    for (const auto& t : this->periodic_tasks)
+        if (t.period > this->horizon_H) this->horizon_H = t.period;
+}
+
+double CATS_scheduler::retx_count_required(double p, double sr_req)
+{
+    /* P(success in k attempts) = 1 - (1-p)^k >= sr_req
+       => k >= log(1 - sr_req) / log(1 - p). */
+    if (sr_req <= 0.0) return 1.0;             /* still need to send the frame once */
+    if (p >= 1.0)      return 1.0;
+    if (p <= 0.0)      return std::numeric_limits<double>::infinity();
+    if (sr_req >= 1.0) return std::numeric_limits<double>::infinity();
+
+    const double k = std::log(1.0 - sr_req) / std::log(1.0 - p);
+    return std::ceil(k);
+}
+
+double CATS_scheduler::compute_demand_slots(double p) const
+{
+    if (this->horizon_H == 0U) return 0.0;
+
+    double demand = 0.0;
+    for (const auto& t : this->periodic_tasks)
+    {
+        if (t.period == 0U) continue;
+        const double k = retx_count_required(p, t.success_rate_req);
+        if (std::isinf(k)) return std::numeric_limits<double>::infinity();
+        /* releases of task i within H: ceil(H / T_i) */
+        const double releases = std::ceil(static_cast<double>(this->horizon_H) /
+                                          static_cast<double>(t.period));
+        demand += releases * static_cast<double>(t.frames) * k;
+    }
+    return demand;
+}
+
+double CATS_scheduler::compute_utilization(double p) const
+{
+    if (this->horizon_H == 0U) return 0.0;
+    return this->compute_demand_slots(p) / static_cast<double>(this->horizon_H);
 }
 
 scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
@@ -76,17 +130,16 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
             double acc = (accumulated_prob.find(key) != accumulated_prob.end())
                          ? accumulated_prob[key] : 0.0;
 
-            /* Margin protects against single-shot Bernoulli failures: with no ack we
-               can't recover a missed draw, so pick the smallest power whose accumulated
-               probability clears req + margin (clamped at 1.0). */
-            const double effective_req = std::min(1.0, req + this->margin);
+            /* max_power_idx is set by receive_prediction based on the slack
+               policy: pick the lowest tier whose predicted U fits below the
+               threshold, then cap the selection loop there to save energy. */
             int chosen_idx = -1;
-            for (int i = 0; i < 3; i++)
+            for (unsigned int i = 0U; i <= this->max_power_idx; i++)
             {
                 double acc_after = acc + transmission_prob[i] - acc * transmission_prob[i];
-                if (acc_after >= effective_req)
+                if (acc_after >= req)
                 {
-                    chosen_idx = i;
+                    chosen_idx = static_cast<int>(i);
                     break;
                 }
             }
@@ -102,9 +155,11 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
             }
             else
             {
-                /* No power level meets requirement yet — use max power, keep retransmitting */
-                accumulated_prob[key] = acc + transmission_prob[2] - acc * transmission_prob[2];
-                scheduled_frame.transmission_power = power_levels[2];
+                /* No allowed tier clears the requirement yet — burn the cap
+                   tier and keep retransmitting on the next slot. */
+                accumulated_prob[key] = acc + transmission_prob[this->max_power_idx]
+                                        - acc * transmission_prob[this->max_power_idx];
+                scheduled_frame.transmission_power = power_levels[this->max_power_idx];
                 scheduled_frame.remove_from_buffer = false;
             }
 
@@ -125,6 +180,22 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
 void CATS_scheduler::receive_prediction(const std::vector<double>& pred_probs)
 {
     std::copy(pred_probs.begin(), pred_probs.end(), this->transmission_prob);
+
+    /* Slack-aware power cap: walk the predictor tiers low-to-high and pick the
+       first one whose predicted utilization fits below the threshold. If even
+       the highest tier doesn't fit (overloaded schedule), fall back to it so
+       behavior degrades gracefully. */
+    unsigned int new_cap = 2U;
+    for (unsigned int i = 0U; i < 3U; i++)
+    {
+        const double U = this->compute_utilization(this->transmission_prob[i]);
+        if (U <= this->utilization_threshold)
+        {
+            new_cap = i;
+            break;
+        }
+    }
+    this->max_power_idx = new_cap;
 }
 
 std::string CATS_scheduler::get_name() const

@@ -14,6 +14,17 @@ using json = nlohmann::json;
 
 #include "system_model/system_model.hpp"
 
+/* Minimal periodic-task descriptor exposed by generators that produce
+   periodic traffic. Used by schedulers that need a-priori knowledge of the
+   task set (e.g., CATS computing demand/utilization over a horizon). */
+struct periodic_task_t
+{
+    unsigned int id;
+    unsigned int period;            /* T_i: inter-arrival in ticks */
+    unsigned int frames;            /* C_i: frames per release */
+    double       success_rate_req;  /* SR_i: required reception probability */
+};
+
 /* This class keeps controls of the arriving packets, transmited packets and missed deadlines */
 class BasePacketGenerator
 {
@@ -32,6 +43,10 @@ public:
     virtual void generate_packets(void) = 0;
 
     virtual std::string get_name() const = 0;
+
+    /* Generators with periodic traffic expose their task set here; default
+       is empty so non-periodic generators don't need to override. */
+    virtual std::vector<periodic_task_t> get_periodic_tasks() const { return {}; }
 
     /* Toggle per-spawn logging into packet_gen_log. Disable in summary mode
        to keep memory flat across long-duration runs. */

@@ -17,9 +17,9 @@
 # tests with n_runs > 16 on this 32-CPU layout, raise --mem-per-cpu to 2G.
 
 # Submit with:
-#     sbatch run_aire.sh <run_name> [belief_threshold] [margin]
+#     sbatch run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
 # Override defaults via --export, e.g.:
-#     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name> [belief_threshold] [margin]
+#     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
 # Reproducible run (same SEED → bit-identical output PNGs):
 #     sbatch --export=SEED=42,ALL run_aire.sh <run_name>
 
@@ -55,9 +55,9 @@ export OPENBLAS_NUM_THREADS=1
 N_RUNS="${N_RUNS:-50}"   # runs averaged per (scenario, U, scheduler) point
 MODE="${MODE:-sweep}"    # tests | sweep
 RUN_NAME="${1:-run-${SLURM_JOB_ID}}"
-BELIEF_THRESHOLD="${2:-}"   # optional; if empty, run_simulation.py uses its default
-MARGIN="${3:-}"             # optional; if empty, run_simulation.py uses its default
-# Note: passing margin requires belief_threshold to be set (positional args).
+BELIEF_THRESHOLD="${2:-}"        # optional; if empty, run_simulation.py uses its default
+UTILIZATION_THRESHOLD="${3:-}"   # optional; if empty, run_simulation.py uses its default
+# Note: passing utilization_threshold requires belief_threshold to be set (positional args).
 
-echo "Job ${SLURM_JOB_ID} | ${SLURM_CPUS_PER_TASK} CPUs | mode=${MODE} | n_runs=${N_RUNS} | name=${RUN_NAME} | belief=${BELIEF_THRESHOLD:-default} | margin=${MARGIN:-default}"
-python run_simulation.py "${N_RUNS}" "${MODE}" "${RUN_NAME}" ${BELIEF_THRESHOLD:+"${BELIEF_THRESHOLD}"} ${MARGIN:+"${MARGIN}"}
+echo "Job ${SLURM_JOB_ID} | ${SLURM_CPUS_PER_TASK} CPUs | mode=${MODE} | n_runs=${N_RUNS} | name=${RUN_NAME} | belief=${BELIEF_THRESHOLD:-default} | util=${UTILIZATION_THRESHOLD:-default}"
+python run_simulation.py "${N_RUNS}" "${MODE}" "${RUN_NAME}" ${BELIEF_THRESHOLD:+"${BELIEF_THRESHOLD}"} ${UTILIZATION_THRESHOLD:+"${UTILIZATION_THRESHOLD}"}

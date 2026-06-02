@@ -106,7 +106,7 @@ BASE_CATS_SCHEDULER = {
     "type": "CATS",
     "frequency": 14074000,
     "belief_threshold": 0.7,
-    "margin": 0.1
+    "utilization_threshold": 0.9,
 }
 
 BASE_CHANNELS = [
@@ -288,8 +288,8 @@ def print_test_summary(test: dict):
     tx_power_str = f"  tx_power={sched['tx_power']}W" if 'tx_power' in sched else ""
     rx_period_str = f"  rx_period={sched['rx_period']}" if 'rx_period' in sched else ""
     belief_str = f"  belief_threshold={sched['belief_threshold']}" if 'belief_threshold' in sched else ""
-    margin_str = f"  margin={sched['margin']}" if 'margin' in sched else ""
-    print(f"   Scheduler  : {sched['type']}{tx_power_str}  freq={sched['frequency']}Hz{rx_period_str}{belief_str}{margin_str}")
+    util_str = f"  util_threshold={sched['utilization_threshold']}" if 'utilization_threshold' in sched else ""
+    print(f"   Scheduler  : {sched['type']}{tx_power_str}  freq={sched['frequency']}Hz{rx_period_str}{belief_str}{util_str}")
     print(f"   Duration   : {cfg['simulation']['duration']} ticks")
     print(f"   Channels   : {', '.join(ch['name'] for ch in cfg['channels'])}")
     print(f"   Packets:")
@@ -1147,20 +1147,20 @@ def format_duration(seconds: float) -> str:
     return f"{seconds:.2f}s"
 
 if __name__ == "__main__":
-    n_runs           = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    mode             = sys.argv[2] if len(sys.argv) > 2 else "tests"
-    run_name         = sys.argv[3] if len(sys.argv) > 3 else None
-    belief_threshold = float(sys.argv[4]) if len(sys.argv) > 4 else None
-    margin           = float(sys.argv[5]) if len(sys.argv) > 5 else None
-    n_workers        = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    n_runs                = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    mode                  = sys.argv[2] if len(sys.argv) > 2 else "tests"
+    run_name              = sys.argv[3] if len(sys.argv) > 3 else None
+    belief_threshold      = float(sys.argv[4]) if len(sys.argv) > 4 else None
+    utilization_threshold = float(sys.argv[5]) if len(sys.argv) > 5 else None
+    n_workers             = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
 
     if belief_threshold is not None:
         BASE_CATS_SCHEDULER["belief_threshold"] = belief_threshold
         print(f"CATS belief_threshold overridden to {belief_threshold}")
 
-    if margin is not None:
-        BASE_CATS_SCHEDULER["margin"] = margin
-        print(f"CATS margin overridden to {margin}")
+    if utilization_threshold is not None:
+        BASE_CATS_SCHEDULER["utilization_threshold"] = utilization_threshold
+        print(f"CATS utilization_threshold overridden to {utilization_threshold}")
 
     if MASTER_SEED is not None:
         print(f"SEED={MASTER_SEED} — per-sim seeds derived deterministically; "
