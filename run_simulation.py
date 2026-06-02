@@ -739,9 +739,9 @@ def print_success_criteria_table(all_results: list[tuple[str, dict]]):
 
 # Each sweep scenario fixes (n, c_min, c_max, sr_min, sr_max); U is swept.
 SWEEP_SCENARIOS = [
-    (4,  1, 3, 0.50, 0.70),
-    (10, 1, 3, 0.50, 0.70),
-    (20, 1, 3, 0.50, 0.70),
+    (4,  1, 3, 0.50, 0.90),
+    (10, 1, 3, 0.50, 0.90),
+    (20, 1, 3, 0.50, 0.90),
 ]
 
 U_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
