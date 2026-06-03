@@ -23,11 +23,17 @@ CATS_scheduler::CATS_scheduler(unsigned int frequency,
 {
     this->transmission_prob[0] = this->transmission_prob[1] = this->transmission_prob[2] = 0.0;
     this->belief = 0.0;
-    this->retransmissions_per_frame = 1U; /* TODO: estimate from channel prediction */
     this->eigenvalue = 0.99015;
 
+    /* Horizon = LCM of all task periods. Demand within one hyperperiod is
+       exact (every task completes an integer number of releases), so the
+       utilization estimate is tighter than max(T_i). */
     for (const auto& t : this->periodic_tasks)
-        if (t.period > this->horizon_H) this->horizon_H = t.period;
+    {
+        if (t.period == 0U) continue;
+        this->horizon_H = (this->horizon_H == 0U) ? t.period
+                                                  : std::lcm(this->horizon_H, t.period);
+    }
 }
 
 double CATS_scheduler::retx_count_required(double p, double sr_req)
@@ -51,7 +57,8 @@ double CATS_scheduler::compute_demand_slots(double p) const
     for (const auto& t : this->periodic_tasks)
     {
         if (t.period == 0U) continue;
-        const double k = retx_count_required(p, t.success_rate_req);
+        const double k = retx_count_required(p, std::pow(t.success_rate_req,
+                                                         1.0 / t.frames));
         if (std::isinf(k)) return std::numeric_limits<double>::infinity();
         /* releases of task i within H: ceil(H / T_i) */
         const double releases = std::ceil(static_cast<double>(this->horizon_H) /
@@ -73,30 +80,36 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
     scheduled_frame.frequency = this->frequency;
 
     /* Drop unfeasible packets and detect urgent ones in the same pass.
-       Under belief-based scheduling any slot can be TX, so a packet is
-       droppable iff ticks_available < needed_slots, and urgent iff
-       ticks_available == needed_slots (every remaining slot must be TX —
-       listening once would force a drop next iteration). */
+       Per-frame slot cost is the number of retransmissions needed to hit
+       the per-frame SR target (pow(SR, 1/frames)) at the best channel
+       probability we'll actually allow (transmission_prob[max_power_idx]) —
+       the cap is a hard energy limit, so feasibility past it is moot.
+       Pre-prediction (p_best == 0) we fall back to 1 slot/frame so packets
+       aren't all dropped before the first prediction lands. */
+    const double p_best = this->transmission_prob[this->max_power_idx];
     std::vector<std::pair<unsigned int, unsigned int>> to_drop;
     bool no_urgent_packet = true;
     for (auto& pkt : *this->buffer_packet)
     {
         if (pkt.deadline <= *(this->system_tick)) continue; /* already expired, check_deadlines handles it */
-        unsigned int ticks_available  = pkt.deadline - *(this->system_tick);
-        unsigned int remaining_frames = pkt.frames - pkt.frame_count;
-        unsigned int needed_slots     = remaining_frames * this->retransmissions_per_frame;
-        if (ticks_available < needed_slots)
+        const double ticks_available  = static_cast<double>(pkt.deadline - *(this->system_tick));
+        const unsigned int remaining_frames = pkt.frames - pkt.frame_count;
+        const double sr_per_frame = std::pow(pkt.success_rate_req, 1.0 / pkt.frames);
+        const double slots_per_frame = (p_best <= 0.0) ? 1.0
+                                                       : retx_count_required(p_best, sr_per_frame);
+        const double needed_slots = static_cast<double>(remaining_frames) * slots_per_frame;
+        if (std::isinf(needed_slots) || ticks_available < needed_slots)
         {
             to_drop.emplace_back(pkt.id, pkt.id_count);
         }
-        else if (ticks_available == needed_slots)
+        else if (ticks_available <= needed_slots)
         {
             no_urgent_packet = false;
         }
     }
     for (auto& [id, id_count] : to_drop)
     {
-        accumulated_prob.erase(id_count);
+        accumulated_prob.erase(packet_key(id, id_count));
         this->buffer->drop_packet(id, id_count);
     }
 
@@ -122,7 +135,7 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
         if (lowest_it != this->buffer_packet->end())
         {
             const unsigned int power_levels[3] = {1, 10, 25};
-            unsigned int key = lowest_it->id_count;
+            uint64_t key     = packet_key(lowest_it->id, lowest_it->id_count);
             double req       = std::pow(lowest_it->success_rate_req,
                                         1.0 / lowest_it->frames);
 

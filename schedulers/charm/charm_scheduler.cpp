@@ -33,7 +33,7 @@ scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
             scheduled_frame.packet = &(*lowest_it);
             scheduled_frame.radio_mode = TX_MODE;
 
-            unsigned int key = lowest_it->id_count;
+            uint64_t key = packet_key(lowest_it->id, lowest_it->id_count);
 
             /* Check if this frame is being transmitted for the first time */
             if (accumulated_prob.find(key) == accumulated_prob.end())
@@ -62,7 +62,7 @@ scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
         else
         {
             scheduled_frame.packet = nullptr;
-            scheduled_frame.radio_mode = IDLE;
+            scheduled_frame.radio_mode = RX_MODE;
         }
     }
 

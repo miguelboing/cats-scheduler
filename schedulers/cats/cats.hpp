@@ -24,16 +24,15 @@ public:
     float eigenvalue;
 
     double transmission_prob[3];
-    unsigned int retransmissions_per_frame;
-    std::unordered_map<unsigned int, double> accumulated_prob;
+    std::unordered_map<uint64_t, double> accumulated_prob;
 
     /* A-priori knowledge of the periodic task set (populated at construction).
        Used to size demand/utilization estimates against a fixed horizon. */
     std::vector<periodic_task_t> periodic_tasks;
 
-    /* Utilization horizon — currently the largest period across periodic_tasks.
-       Hyperperiod (LCM) is the theoretically correct choice but can blow up;
-       max(T_i) is a stable approximation. Zero when no periodic tasks exist. */
+    /* Utilization horizon — hyperperiod (LCM of periodic_tasks periods).
+       Demand within one hyperperiod is exact since every task completes an
+       integer number of releases. Zero when no periodic tasks exist. */
     unsigned int horizon_H;
 
     /* Slack-aware power-cap policy. On every channel prediction we recompute

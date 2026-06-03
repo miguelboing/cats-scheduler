@@ -14,7 +14,7 @@ public:
     unsigned int frequency;
     unsigned int rx_period;
     double transmission_prob;
-    std::unordered_map<unsigned int, double> accumulated_prob;
+    std::unordered_map<uint64_t, double> accumulated_prob;
 
     scheduled_frame_t do_schedule_frame(void) override;
 
