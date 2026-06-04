@@ -118,7 +118,7 @@ BASE_CHANNELS = [
 ]
 
 BASE_SIM = {
-    "duration":      100000,  # Sufficient for this steady state matrix
+    "duration":      250000,  # Sufficient for this steady state matrix
     "predict_error": 0.10,    # ±half-width of uniform noise injected per predicted decode probability
 }
 
