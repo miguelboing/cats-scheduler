@@ -117,7 +117,10 @@ BASE_CHANNELS = [
     }
 ]
 
-BASE_SIM = { "duration": 100000 } # Sufficient for this steady state matrix
+BASE_SIM = {
+    "duration":      100000,  # Sufficient for this steady state matrix
+    "predict_error": 0.10,    # ±half-width of uniform noise injected per predicted decode probability
+}
 
 def scenario_label(n: int, c_min: int, c_max: int,
                    sr_min: float, sr_max: float, U: Optional[float] = None) -> str:

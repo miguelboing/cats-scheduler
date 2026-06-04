@@ -180,7 +180,9 @@ int main(int argc, char* argv[])
     transmitted_frame_t transmitted_frame;
 
     /* Initialize the ML Predictor */
-    MLPredictor ml_predictor(system_tick, channels);
+    const double predict_error = config["simulation"].value("predict_error", 0.0);
+    MLPredictor ml_predictor(system_tick, channels, predict_error);
+    if (has_seed) ml_predictor.seed_rng(seed + 0x300);
     std::vector<double> pred_probs;
 
     /* Initialize the target receiver */
