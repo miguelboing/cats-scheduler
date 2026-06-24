@@ -9,17 +9,22 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 # Resource sizing (post -O2 + summary-mode optimization):
-#   - sweep @ 100k ticks, n_runs=2:   ~1 min wall on 32 CPUs
-#   - sweep @ 100k ticks, n_runs=50:  ~5 min  (prior default)
-#   - sweep @ 100k ticks, n_runs=500: ~45 min
-# Sweep mode keeps the worker memory footprint at tens of MB (no full log
-# parsed in Python). Tests mode parses ~180 MB JSON per worker — if running
-# tests with n_runs > 16 on this 32-CPU layout, raise --mem-per-cpu to 2G.
+#   - sweep       @ 100k ticks, n_runs=2:   ~1 min wall on 32 CPUs
+#   - sweep       @ 100k ticks, n_runs=50:  ~5 min  (prior default)
+#   - sweep       @ 100k ticks, n_runs=500: ~45 min
+#   - error_sweep @ 250k ticks, n_runs=50:  ~30 min  (scales with len(PREDICT_ERRORS) and
+#                                                    duration; RM is dedup'd across errors)
+#   - error_sweep @ 250k ticks, n_runs=500: ~5 h
+# Sweep / error_sweep modes keep the worker memory footprint at tens of MB
+# (no full log parsed in Python). Tests mode parses ~180 MB JSON per worker
+# — if running tests with n_runs > 16 on this 32-CPU layout, raise
+# --mem-per-cpu to 2G.
 
 # Submit with:
 #     sbatch run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
 # Override defaults via --export, e.g.:
-#     sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
+#     sbatch --export=N_RUNS=100,MODE=sweep,ALL       run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
+#     sbatch --export=N_RUNS=200,MODE=error_sweep,ALL run_aire.sh <run_name>
 # Reproducible run (same SEED → bit-identical output PNGs):
 #     sbatch --export=SEED=42,ALL run_aire.sh <run_name>
 
@@ -53,7 +58,7 @@ export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
 N_RUNS="${N_RUNS:-50}"   # runs averaged per (scenario, U, scheduler) point
-MODE="${MODE:-sweep}"    # tests | sweep
+MODE="${MODE:-sweep}"    # tests | sweep | error_sweep
 RUN_NAME="${1:-run-${SLURM_JOB_ID}}"
 BELIEF_THRESHOLD="${2:-}"        # optional; if empty, run_simulation.py uses its default
 UTILIZATION_THRESHOLD="${3:-}"   # optional; if empty, run_simulation.py uses its default
