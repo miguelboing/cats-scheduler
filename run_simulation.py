@@ -749,6 +749,11 @@ SWEEP_SCENARIOS = [
 
 U_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
+# Prediction-error levels probed by the `error_sweep` mode. The first value
+# must be 0.0 so the Rate-Monotonic curve (predictor-independent) can be
+# borrowed across all error levels without re-running it.
+PREDICT_ERRORS = [0.0, 0.15, 0.30]
+
 def schedulability_ratio(metrics: dict) -> float:
     """Fraction of packet IDs whose final success ratio met the requirement."""
     pids = sorted(metrics["per_id_req"].keys())
@@ -1077,6 +1082,201 @@ def plot_schedulability(results: dict):
         plt.close()
         print(f"Schedulability plot saved to {out}")
 
+# ── Prediction-error sweep ────────────────────────────────────────────────────
+
+def run_error_sweep(n_runs: int, n_workers: int) -> dict:
+    """Run the schedulability sweep once per predict_error level in
+    PREDICT_ERRORS. RM ignores the predictor, so it is dispatched only at
+    PREDICT_ERRORS[0] (must be 0.0) and replicated across the other levels
+    when assembling the result dict. Returns
+    results[err][scen_name][sch_name][U] = metrics."""
+    assert PREDICT_ERRORS[0] == 0.0, "PREDICT_ERRORS[0] must be 0.0"
+
+    jobs = []
+    for err in PREDICT_ERRORS:
+        sim_block = dict(BASE_SIM, predict_error=err)
+        for n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS:
+            scen_name = scenario_label(n, c_min, c_max, sr_min, sr_max)
+            for U in U_VALUES:
+                for sch_name, scheduler in SCHEDULERS:
+                    # Rate-Monotonic is predictor-independent — run it once.
+                    if sch_name == "Rate_M" and err != PREDICT_ERRORS[0]:
+                        continue
+                    test = {
+                        "name": f"err={err:.2f}_{scen_name}_U={U:.2f}_{sch_name}",
+                        "config": {
+                            "simulation": sim_block,
+                            "scheduler":  scheduler,
+                            "channels":   BASE_CHANNELS,
+                        },
+                        "uunifast": {
+                            "U":      U, "n":      n,
+                            "c_min":  c_min, "c_max":  c_max,
+                            "sr_min": sr_min, "sr_max": sr_max,
+                        },
+                    }
+                    for run_idx in range(n_runs):
+                        sim_seed = (derive_seed(MASTER_SEED, test["name"], run_idx)
+                                    if MASTER_SEED is not None else None)
+                        jobs.append(((err, scen_name, U, sch_name), test, run_idx, sim_seed))
+
+    total = len(jobs)
+    print(f"  [error_sweep] dispatching {total} sims "
+          f"({len(PREDICT_ERRORS)} err x {len(SWEEP_SCENARIOS)} scen x "
+          f"{len(U_VALUES)} U x sch x {n_runs} runs; RM dedup'd)", flush=True)
+
+    ctx     = mp.get_context("spawn")
+    window  = max(4 * n_workers, n_workers + 8)
+    combo_runs = defaultdict(list)
+    with ProcessPoolExecutor(max_workers=n_workers, mp_context=ctx) as executor:
+        in_flight = {}
+        job_iter  = iter(jobs)
+        done = 0
+        for _ in range(min(window, total)):
+            try:
+                key, test, _run_idx, sim_seed = next(job_iter)
+            except StopIteration:
+                break
+            fut = executor.submit(_run_single_sweep, (test, done + len(in_flight), sim_seed))
+            in_flight[fut] = key
+        while in_flight:
+            finished, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                key = in_flight.pop(fut)
+                combo_runs[key].append(fut.result())
+                done += 1
+                if done % max(1, total // 50) == 0 or done == total:
+                    print(f"  [error_sweep] {done}/{total} done", end="\r", flush=True)
+                try:
+                    key, test, _run_idx, sim_seed = next(job_iter)
+                except StopIteration:
+                    continue
+                fut2 = executor.submit(_run_single_sweep,
+                                       (test, done + len(in_flight), sim_seed))
+                in_flight[fut2] = key
+    print()
+
+    def percentile(xs, p):
+        s = sorted(xs)
+        if not s:
+            return 0.0
+        k = (len(s) - 1) * p / 100
+        f = int(k)
+        c = min(f + 1, len(s) - 1)
+        return s[f] + (s[c] - s[f]) * (k - f)
+
+    results = {err: {scenario_label(*scen): {sch_name: {} for sch_name, _ in SCHEDULERS}
+                     for scen in SWEEP_SCENARIOS}
+               for err in PREDICT_ERRORS}
+    for (err, scen_name, U, sch_name), runs in combo_runs.items():
+        ratios   = [r["sched_ratio"]  for r in runs]
+        energies = [r["total_energy"] for r in runs]
+        results[err][scen_name][sch_name][U] = {
+            "sched_ratio":     sum(ratios) / len(ratios),
+            "sched_ratio_lo":  percentile(ratios, 10),
+            "sched_ratio_hi":  percentile(ratios, 90),
+            "total_energy":    sum(energies) / len(energies),
+            "total_energy_lo": percentile(energies, 10),
+            "total_energy_hi": percentile(energies, 90),
+        }
+    # Replicate RM (predictor-independent) across the non-zero error levels.
+    base_err = PREDICT_ERRORS[0]
+    for err in PREDICT_ERRORS[1:]:
+        for scen_name in results[err]:
+            results[err][scen_name]["Rate_M"] = results[base_err][scen_name]["Rate_M"]
+    return results
+
+def _draw_error_sweep_panel(ax_top, ax_bot, scen_name: str, err_to_sch: dict):
+    """Draw one scenario column of the error-sweep figure. Color/marker are
+    fixed per scheduler so the curves match the other plots; linestyle varies
+    with prediction_error. Rate_M is drawn once (it does not use the
+    predictor) — CHARM and CATS get one curve per error level."""
+    colors  = plt.cm.tab10.colors
+    markers = ["o", "s", "^", "D", "v", "P", "X"]
+    err_linestyles = {err: ls for err, ls in zip(PREDICT_ERRORS, ["-", "--", "-.", ":"])}
+
+    # Stable scheduler→(color, marker) mapping derived from SCHEDULERS order.
+    sch_style = {sch_name: (colors[i % len(colors)], markers[i % len(markers)])
+                 for i, (sch_name, _) in enumerate(SCHEDULERS)}
+
+    base_err = PREDICT_ERRORS[0]
+
+    # RM first — one solid curve.
+    rm_metrics = err_to_sch[base_err].get("Rate_M", {})
+    if rm_metrics:
+        color, mk = sch_style["Rate_M"]
+        xs    = sorted(rm_metrics.keys())
+        ratio = [rm_metrics[u]["sched_ratio"]  for u in xs]
+        ener  = [rm_metrics[u]["total_energy"] for u in xs]
+        ax_top.plot(xs, ratio, color=color, linestyle="-", marker=mk,
+                    markersize=7, linewidth=1.5, label="Rate_M")
+        ax_bot.plot(xs, ener, color=color, linestyle="-", marker=mk,
+                    markersize=7, linewidth=1.5, label="Rate_M")
+
+    # CHARM and CATS — one curve per error level, linestyle differentiates.
+    for sch_name in (s for s, _ in SCHEDULERS if s != "Rate_M"):
+        color, mk = sch_style[sch_name]
+        for err in PREDICT_ERRORS:
+            u_to_m = err_to_sch[err].get(sch_name, {})
+            if not u_to_m:
+                continue
+            xs    = sorted(u_to_m.keys())
+            ratio = [u_to_m[u]["sched_ratio"]  for u in xs]
+            ener  = [u_to_m[u]["total_energy"] for u in xs]
+            ls    = err_linestyles[err]
+            label = f"{sch_name} (e={err:.2f})"
+            ax_top.plot(xs, ratio, color=color, linestyle=ls, marker=mk,
+                        markersize=6, linewidth=1.4, label=label)
+            ax_bot.plot(xs, ener, color=color, linestyle=ls, marker=mk,
+                        markersize=6, linewidth=1.4, label=label)
+
+    ax_top.set_title(scen_name)
+    ax_top.set_ylim(-0.05, 1.05)
+    ax_top.grid(True, alpha=0.3)
+    ax_top.legend(fontsize=8, ncol=1)
+    ax_bot.set_xlabel("Utilization U")
+    ax_bot.grid(True, alpha=0.3)
+    ax_bot.legend(fontsize=8, ncol=1)
+
+def plot_error_sweep(results: dict):
+    """Combined + per-scenario figures for the prediction-error sweep.
+    `results` is indexed [err][scen_name][sch_name][U]."""
+    scen_names = list(next(iter(results.values())).keys())
+    n_scen     = len(scen_names)
+    os.makedirs(TESTS_DIR, exist_ok=True)
+
+    # err_to_sch_by_scenario[scen_name][err][sch_name] = u_to_metrics
+    by_scen = {scen: {err: results[err][scen] for err in PREDICT_ERRORS}
+               for scen in scen_names}
+
+    fig, axes = plt.subplots(2, n_scen, figsize=(6 * n_scen, 9), sharex="col")
+    if n_scen == 1:
+        axes = axes.reshape(2, 1)
+    for col, scen_name in enumerate(scen_names):
+        _draw_error_sweep_panel(axes[0, col], axes[1, col],
+                                scen_name, by_scen[scen_name])
+    axes[0, 0].set_ylabel("Schedulability ratio (met / total)")
+    axes[1, 0].set_ylabel("Energy (W·frame)")
+    plt.suptitle("Schedulability and Energy vs Utilization — Prediction-Error Sweep",
+                 fontsize=13)
+    plt.tight_layout()
+    out = os.path.join(TESTS_DIR, "results_error_sweep.png")
+    plt.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Error-sweep plot saved to {out}")
+
+    for scen_name in scen_names:
+        fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(7, 9), sharex=True)
+        _draw_error_sweep_panel(ax_top, ax_bot, scen_name, by_scen[scen_name])
+        ax_top.set_ylabel("Schedulability ratio (met / total)")
+        ax_bot.set_ylabel("Energy (W·frame)")
+        plt.suptitle(f"Prediction-Error Sweep", fontsize=12)
+        plt.tight_layout()
+        out = os.path.join(TESTS_DIR, f"results_error_sweep_{_safe_filename(scen_name)}.png")
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Error-sweep plot saved to {out}")
+
 # ── Experiment metadata ───────────────────────────────────────────────────────
 
 def write_experiment_params(mode: str, n_runs: int, run_name: Optional[str]) -> None:
@@ -1190,6 +1390,14 @@ if __name__ == "__main__":
         print(f"Running schedulability sweep ({n_runs} runs/point, {n_workers} workers)")
         results = run_sweep(n_runs, n_workers)
         plot_schedulability(results)
+        print(f"Total elapsed: {format_duration(time.perf_counter() - t_start)}")
+        sys.exit(0)
+
+    if mode == "error_sweep":
+        print(f"Running prediction-error sweep ({n_runs} runs/point, "
+              f"{n_workers} workers, errors={PREDICT_ERRORS})")
+        results = run_error_sweep(n_runs, n_workers)
+        plot_error_sweep(results)
         print(f"Total elapsed: {format_duration(time.perf_counter() - t_start)}")
         sys.exit(0)
 
