@@ -71,9 +71,11 @@ scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
 
 void CHARM_scheduler::receive_prediction(const std::vector<double>& pred_probs)
 {
-    this->transmission_prob = pred_probs[0]; /* Only 10W predicted */
+    this->transmission_prob = pred_probs[0]; /* Only tx_power is predicted */
 }
 
 std::string CHARM_scheduler::get_name() const {
-    return "CHARM";
+    /* Power is part of the name so runs at different tx_power don't overwrite
+       each other's scheduled-packet logs. */
+    return "CHARM_" + std::to_string(this->tx_power) + "W";
 }
