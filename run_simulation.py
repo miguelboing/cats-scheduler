@@ -102,6 +102,8 @@ BASE_SCHEDULER = {
     "rx_period": 5
 }
 
+BASE_SCHEDULER_25W = dict(BASE_SCHEDULER, tx_power=25)
+
 BASE_CATS_SCHEDULER = {
     "type": "CATS",
     "frequency": 14074000,
@@ -141,11 +143,25 @@ SCENARIOS = [
     (0.50, 8,  1, 3, 0.50, 0.90),
 ]
 
+# Fixed-power baselines are run at both power levels CATS can pick from
+# (CATS predicts over {1, 10, 25} W), so a CATS curve can be read against a
+# baseline that spends the same per-frame energy as its high-power choice.
 SCHEDULERS = [
-    ("Rate_M", { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 }),
-    ("CHARM",  BASE_SCHEDULER),
-    ("CATS",   BASE_CATS_SCHEDULER),
+    ("Rate_M",     { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 }),
+    ("Rate_M_25W", { "type": "Rate_M", "tx_power": 25, "frequency": 14074000 }),
+    ("CHARM",      BASE_SCHEDULER),
+    ("CHARM_25W",  BASE_SCHEDULER_25W),
+    ("CATS",       BASE_CATS_SCHEDULER),
 ]
+
+# Schedulers that never consult the ML predictor. Their results are identical
+# at every predict_error level, so the error sweep runs them once and
+# replicates. Keyed on scheduler *type*, not the label, so adding another
+# fixed-power variant needs no change here.
+PREDICTOR_INDEPENDENT_TYPES = {"Rate_M", "EDF"}
+
+def is_predictor_independent(scheduler: dict) -> bool:
+    return scheduler["type"] in PREDICTOR_INDEPENDENT_TYPES
 
 TESTS = [
     {
@@ -1012,7 +1028,9 @@ def _draw_scenario_panel(ax_top, ax_bot, scen_name: str, sch_results: dict):
     onto a pre-existing pair of axes. Shared between the combined plot and the
     per-scenario plots so they stay in sync."""
     colors     = plt.cm.tab10.colors
-    linestyles = ["-", "--", "-.", ":"]
+    # One distinct linestyle per scheduler — the list must be at least as long
+    # as SCHEDULERS or two curves end up sharing a style.
+    linestyles = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (5, 1))]
     markers    = ["o", "s", "^", "D", "v", "P", "X"]
     n_sch      = len(SCHEDULERS)
     dx_step    = 0.012  # horizontal dodge between schedulers (in U units)
@@ -1099,8 +1117,8 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
             scen_name = scenario_label(n, c_min, c_max, sr_min, sr_max)
             for U in U_VALUES:
                 for sch_name, scheduler in SCHEDULERS:
-                    # Rate-Monotonic is predictor-independent — run it once.
-                    if sch_name == "Rate_M" and err != PREDICT_ERRORS[0]:
+                    # Predictor-independent schedulers (RM) — run them once.
+                    if is_predictor_independent(scheduler) and err != PREDICT_ERRORS[0]:
                         continue
                     test = {
                         "name": f"err={err:.2f}_{scen_name}_U={U:.2f}_{sch_name}",
@@ -1179,18 +1197,22 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
             "total_energy_lo": percentile(energies, 10),
             "total_energy_hi": percentile(energies, 90),
         }
-    # Replicate RM (predictor-independent) across the non-zero error levels.
+    # Replicate the predictor-independent schedulers across the non-zero
+    # error levels — they were only dispatched at PREDICT_ERRORS[0].
     base_err = PREDICT_ERRORS[0]
-    for err in PREDICT_ERRORS[1:]:
-        for scen_name in results[err]:
-            results[err][scen_name]["Rate_M"] = results[base_err][scen_name]["Rate_M"]
+    for sch_name, scheduler in SCHEDULERS:
+        if not is_predictor_independent(scheduler):
+            continue
+        for err in PREDICT_ERRORS[1:]:
+            for scen_name in results[err]:
+                results[err][scen_name][sch_name] = results[base_err][scen_name][sch_name]
     return results
 
 def _draw_error_sweep_panel(ax_top, ax_bot, scen_name: str, err_to_sch: dict):
     """Draw one scenario column of the error-sweep figure. Color/marker are
     fixed per scheduler so the curves match the other plots; linestyle varies
-    with prediction_error. Rate_M is drawn once (it does not use the
-    predictor) — CHARM and CATS get one curve per error level."""
+    with prediction_error. Predictor-independent schedulers (RM) are drawn
+    once — CHARM and CATS get one curve per error level."""
     colors  = plt.cm.tab10.colors
     markers = ["o", "s", "^", "D", "v", "P", "X"]
     err_linestyles = {err: ls for err, ls in zip(PREDICT_ERRORS, ["-", "--", "-.", ":"])}
@@ -1201,20 +1223,24 @@ def _draw_error_sweep_panel(ax_top, ax_bot, scen_name: str, err_to_sch: dict):
 
     base_err = PREDICT_ERRORS[0]
 
-    # RM first — one solid curve.
-    rm_metrics = err_to_sch[base_err].get("Rate_M", {})
-    if rm_metrics:
-        color, mk = sch_style["Rate_M"]
-        xs    = sorted(rm_metrics.keys())
-        ratio = [rm_metrics[u]["sched_ratio"]  for u in xs]
-        ener  = [rm_metrics[u]["total_energy"] for u in xs]
+    # Predictor-independent schedulers first — one solid curve each.
+    for sch_name, scheduler in SCHEDULERS:
+        if not is_predictor_independent(scheduler):
+            continue
+        u_to_m = err_to_sch[base_err].get(sch_name, {})
+        if not u_to_m:
+            continue
+        color, mk = sch_style[sch_name]
+        xs    = sorted(u_to_m.keys())
+        ratio = [u_to_m[u]["sched_ratio"]  for u in xs]
+        ener  = [u_to_m[u]["total_energy"] for u in xs]
         ax_top.plot(xs, ratio, color=color, linestyle="-", marker=mk,
-                    markersize=7, linewidth=1.5, label="Rate_M")
+                    markersize=7, linewidth=1.5, label=sch_name)
         ax_bot.plot(xs, ener, color=color, linestyle="-", marker=mk,
-                    markersize=7, linewidth=1.5, label="Rate_M")
+                    markersize=7, linewidth=1.5, label=sch_name)
 
     # CHARM and CATS — one curve per error level, linestyle differentiates.
-    for sch_name in (s for s, _ in SCHEDULERS if s != "Rate_M"):
+    for sch_name in (s for s, cfg in SCHEDULERS if not is_predictor_independent(cfg)):
         color, mk = sch_style[sch_name]
         for err in PREDICT_ERRORS:
             u_to_m = err_to_sch[err].get(sch_name, {})
