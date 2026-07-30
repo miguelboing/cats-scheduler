@@ -8,13 +8,17 @@
 #SBATCH --mem-per-cpu=1G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
-# Resource sizing (post -O2 + summary-mode optimization):
-#   - sweep       @ 100k ticks, n_runs=2:   ~1 min wall on 32 CPUs
-#   - sweep       @ 100k ticks, n_runs=50:  ~5 min  (prior default)
-#   - sweep       @ 100k ticks, n_runs=500: ~45 min
-#   - error_sweep @ 250k ticks, n_runs=50:  ~30 min  (scales with len(PREDICT_ERRORS) and
+# Resource sizing (post -O2 + summary-mode optimization). Estimates below are
+# for the current 5-scheduler roster (RM/CHARM at both 10 W and 25 W, + CATS);
+# they were ~1.6x lower back when SCHEDULERS held only 3 entries, so rescale
+# if you add or drop a scheduler.
+#   - sweep       @ 100k ticks, n_runs=2:   ~2 min wall on 32 CPUs
+#   - sweep       @ 100k ticks, n_runs=50:  ~8 min  (prior default)
+#   - sweep       @ 100k ticks, n_runs=500: ~75 min
+#   - error_sweep @ 250k ticks, n_runs=50:  ~50 min  (scales with len(PREDICT_ERRORS) and
 #                                                    duration; RM is dedup'd across errors)
-#   - error_sweep @ 250k ticks, n_runs=500: ~5 h
+#   - error_sweep @ 250k ticks, n_runs=500: ~8 h  -- exceeds the 5 h default below,
+#                                                    submit with --time=12:00:00
 # Sweep / error_sweep modes keep the worker memory footprint at tens of MB
 # (no full log parsed in Python). Tests mode parses ~180 MB JSON per worker
 # — if running tests with n_runs > 16 on this 32-CPU layout, raise
