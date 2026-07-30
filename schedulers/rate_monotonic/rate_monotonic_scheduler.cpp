@@ -36,5 +36,7 @@ scheduled_frame_t RM_scheduler::do_schedule_frame(void)
 }
 
 std::string RM_scheduler::get_name() const {
-    return "Rate_M";
+    /* Power is part of the name so runs at different tx_power don't overwrite
+       each other's scheduled-packet logs. */
+    return "Rate_M_" + std::to_string(this->tx_power) + "W";
 }
