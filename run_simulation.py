@@ -132,7 +132,7 @@ def scenario_label(n: int, c_min: int, c_max: int,
     if U is not None:
         parts.append(f"U={int(round(U * 100))}")
     parts.append(f"n={n}")
-    parts.append(f"C=[{c_min},{c_max}]")
+    parts.append(f"L=[{c_min},{c_max}]")
     parts.append(f"SR=[{sr_min},{sr_max}]")
     return ",".join(parts)
 
@@ -147,9 +147,9 @@ SCENARIOS = [
 # (CATS predicts over {1, 10, 25} W), so a CATS curve can be read against a
 # baseline that spends the same per-frame energy as its high-power choice.
 SCHEDULERS = [
-    ("Rate_M",     { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 }),
+    ("Rate_M_10W",     { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 }),
     ("Rate_M_25W", { "type": "Rate_M", "tx_power": 25, "frequency": 14074000 }),
-    ("CHARM",      BASE_SCHEDULER),
+    ("CHARM_10W",      BASE_SCHEDULER),
     ("CHARM_25W",  BASE_SCHEDULER_25W),
     ("CATS",       BASE_CATS_SCHEDULER),
 ]
