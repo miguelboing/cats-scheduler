@@ -34,7 +34,10 @@ FREQ_HZ = 14_074_000
 # `_run_single_sweep` on a fully-formed `test` dict — they don't consult
 # any of the patched globals — so the overrides only need to live in the
 # parent process.
-rs.BASE_SIM = {"duration": 160}  # capped by CSV length
+rs.BASE_SIM = {
+    "duration":      160,   # capped by CSV length
+    "predict_error": 0.20,  # ±half-width of uniform noise on each predicted decode probability
+}
 
 rs.BASE_CHANNELS = [{
     "type":      "replay",
@@ -53,9 +56,9 @@ rs.SCHEDULERS = [
 # Three scenarios — same axes as run_simulation's SWEEP_SCENARIOS, just
 # with the 0.6-0.9 SR range and three task counts.
 rs.SWEEP_SCENARIOS = [
-    (4,  1, 3, 0.60, 0.90),
-    (10,  1, 3, 0.60, 0.90),
-    (20, 1, 3, 0.60, 0.90),
+    (4,  1, 3, 0.50, 0.90),
+    (10, 1, 3, 0.50, 0.90),
+    (20, 1, 3, 0.50, 0.90),
 ]
 
 rs.U_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
