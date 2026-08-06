@@ -19,16 +19,19 @@ scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
     }
     else /* If it is not try to schedule a packet */
     {
-        /* Find the packet with the smaller period */
+        /* Find the packet with the earliest deadline. CHARM used to pick by
+           shortest period (rate-monotonic order); it now uses EDF, matching
+           the EDF baseline and CATS so that a difference between the curves
+           is attributable to the retransmission/power policy rather than to
+           the queue discipline. No is_periodic guard is needed here — unlike
+           the period, a deadline is well defined for aperiodic packets too. */
         auto lowest_it = std::min_element(this->buffer_packet->begin(),
                                           this->buffer_packet->end(),
                                           [](const packet_t& a, const packet_t& b) {
-                                              if (!a.is_periodic) return false;
-                                              if (!b.is_periodic) return true;
-                                              return a.period < b.period;
+                                              return a.deadline < b.deadline;
                                           });
 
-        if (lowest_it != this->buffer_packet->end() && lowest_it->is_periodic)
+        if (lowest_it != this->buffer_packet->end())
         {
             scheduled_frame.packet = &(*lowest_it);
             scheduled_frame.radio_mode = TX_MODE;
