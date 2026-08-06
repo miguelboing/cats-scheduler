@@ -170,10 +170,16 @@ SCENARIOS = [
 # Fixed-power baselines are run at both power levels CATS can pick from
 # (CATS predicts over {1, 10, 25} W), so a CATS curve can be read against a
 # baseline that spends the same per-frame energy as its high-power choice.
+# EDF replaced Rate-Monotonic as the fixed-power baseline so that every
+# scheduler on the plot dequeues in the same (earliest-deadline) order —
+# CHARM and CATS already did. A gap between curves is then attributable to the
+# retransmission/power policy rather than to the queue discipline. Swap the
+# type back to "Rate_M" (and the label) to reproduce the older comparison, or
+# append the Rate_M entries to run both on the same axes.
 SCHEDULERS = [
-    ("Rate_M_10W",     { "type": "Rate_M", "tx_power": 10, "frequency": 14074000 }),
-    ("Rate_M_25W", { "type": "Rate_M", "tx_power": 25, "frequency": 14074000 }),
-    ("CHARM_10W",      BASE_SCHEDULER),
+    ("EDF_10W",    { "type": "EDF", "tx_power": 10, "frequency": 14074000 }),
+    ("EDF_25W",    { "type": "EDF", "tx_power": 25, "frequency": 14074000 }),
+    ("CHARM_10W",  BASE_SCHEDULER),
     ("CHARM_25W",  BASE_SCHEDULER_25W),
     ("CATS",       BASE_CATS_SCHEDULER),
 ]
