@@ -34,6 +34,8 @@ scheduled_frame_t EDF_scheduler::do_schedule_frame(void)
 }
 
 std::string EDF_scheduler::get_name() const {
-    return "EDF";
+    /* Power is part of the name so runs at different tx_power don't overwrite
+       each other's scheduled-packet logs. */
+    return "EDF_" + std::to_string(this->tx_power) + "W";
 }
 
