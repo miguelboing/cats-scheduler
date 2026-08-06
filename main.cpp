@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <streambuf>
 #include <cstdint>
+#include <cmath>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
@@ -484,6 +485,11 @@ int main(int argc, char* argv[])
         std::map<int, int> per_id_generated;
         std::map<int, int> per_id_undelivered;
         std::map<int, double> per_id_req;
+        /* Per-instance delivered/not, in release order. instance_frames_needed
+           is keyed (id, id_count) in a std::map, so iterating it yields each
+           id's instances already ordered by release. Used for the windowed
+           (m,k) check and the burst-length metric below. */
+        std::map<int, std::vector<char>> per_id_delivered;
         for (const auto& gen : config["packet_generators"])
         {
             for (const auto& p : gen["packets"])
@@ -492,6 +498,7 @@ int main(int argc, char* argv[])
                 per_id_req[pid]         = p["success_rate"];
                 per_id_generated[pid]   = 0;
                 per_id_undelivered[pid] = 0;
+                per_id_delivered[pid]   = std::vector<char>();
             }
         }
         for (const auto& kv : instance_frames_needed)
@@ -506,20 +513,78 @@ int main(int argc, char* argv[])
                 if (received_slots.count(std::make_tuple(pid, pid_count, slot)))
                     delivered++;
             }
-            if (delivered < needed) per_id_undelivered[pid]++;
+            const bool instance_ok = (delivered >= needed);
+            if (!instance_ok) per_id_undelivered[pid]++;
+            per_id_delivered[pid].push_back(instance_ok ? 1 : 0);
         }
+
+        /* Weakly-hard / (m,k)-firm window. An id satisfies its requirement if
+           every window of `window_k` consecutive instances delivers at least
+           m = ceil(success_rate_req * window_k) of them. Sliding (not
+           tumbling) so a burst straddling a boundary can't be masked. Note
+           window_k must be >= 1/(1 - success_rate_req) or m == window_k and
+           the constraint degenerates to zero-miss; window_m is emitted so the
+           harness can flag that. The default k = 100 pairs with the harness's
+           2-decimal success_rate draws so that m/k reproduces the requirement
+           exactly. */
+        const unsigned int window_k = config["simulation"].value("window_k", 100U);
 
         json summary;
         summary["total_tx_power"] = total_tx_power;
+        summary["window_k"]       = window_k;
         json per_id = json::array();
         for (const auto& kv : per_id_req)
         {
-            const int pid = kv.first;
+            const int pid                   = kv.first;
+            const std::vector<char>& seq    = per_id_delivered[pid];
+            /* Smallest m with m/k >= req. The 1e-9 nudge is load-bearing:
+               success_rate_req arrives as a 2-decimal double, and a bare
+               ceil() overshoots by one wherever that double rounds up --
+               0.55*100 and 0.56*100 both do, silently making the constraint
+               stricter than the task asked for. The epsilon is far below the
+               smallest legitimate gap (1/100 at k=1), so it only ever cancels
+               representation noise. Keep in sync with warn_window_k(). */
+            const unsigned int window_m     = (window_k == 0U) ? 0U :
+                static_cast<unsigned int>(
+                    std::ceil(kv.second * static_cast<double>(window_k) - 1e-9));
+
+            /* Longest run of consecutive undelivered instances. Parameter-free
+               companion to the (m,k) check. */
+            int max_burst = 0;
+            int run       = 0;
+            for (const char ok : seq)
+            {
+                run = ok ? 0 : run + 1;
+                if (run > max_burst) max_burst = run;
+            }
+
+            /* Sliding window over a running count of delivered instances. */
+            int windows_total      = 0;
+            int window_violations  = 0;
+            if (window_k > 0U && seq.size() >= window_k)
+            {
+                int in_window = 0;
+                for (unsigned int i = 0U; i < window_k; i++)
+                    in_window += seq[i];
+                windows_total = 1;
+                if (in_window < static_cast<int>(window_m)) window_violations++;
+                for (unsigned int i = window_k; i < seq.size(); i++)
+                {
+                    in_window += seq[i] - seq[i - window_k];
+                    windows_total++;
+                    if (in_window < static_cast<int>(window_m)) window_violations++;
+                }
+            }
+
             per_id.push_back({
-                {"id",                pid},
-                {"success_rate_req",  kv.second},
-                {"generated",         per_id_generated[pid]},
-                {"undelivered",       per_id_undelivered[pid]}
+                {"id",                     pid},
+                {"success_rate_req",       kv.second},
+                {"generated",              per_id_generated[pid]},
+                {"undelivered",            per_id_undelivered[pid]},
+                {"max_consecutive_misses", max_burst},
+                {"window_m",               window_m},
+                {"windows_total",          windows_total},
+                {"window_violations",      window_violations}
             });
         }
         summary["per_id"] = per_id;

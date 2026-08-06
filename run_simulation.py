@@ -3,6 +3,7 @@ import sys
 import os
 import copy
 import hashlib
+import math
 import multiprocessing as mp
 import random
 import subprocess
@@ -122,7 +123,30 @@ BASE_CHANNELS = [
 BASE_SIM = {
     "duration":      250000,  # Sufficient for this steady state matrix
     "predict_error": 0.10,    # ±half-width of uniform noise injected per predicted decode probability
+    "window_k":      100,     # weakly-hard (m,k) window, in instances — see below
 }
+
+# The (m,k) window length decides how burst-sensitive `sched_ratio_mk` is:
+# k -> inf recovers the whole-run average (`sched_ratio`), while the smallest
+# usable k tolerates no bursts at all. Two hard constraints:
+#
+#   k >= 1 / (1 - success_rate_req)   or m = ceil(req*k) == k and the window
+#                                     silently degenerates to zero-miss. At
+#                                     sr_max = 0.90 that floor is k = 10.
+#   k <= instances per id             or the id has no complete window and is
+#                                     scored vacuously met (see warn_vacuous).
+#                                     This is the binding constraint at k=100.
+#
+# 100 is chosen to match the 2-decimal `success_rate` draws in make_test_set:
+# m = ceil(req*100) is exactly req*100, so m/k reproduces the requirement with
+# no rounding and every task is compared against the rate it actually asked
+# for. Deriving a per-task k from the fraction instead (0.50 -> 1/2,
+# 0.51 -> 51/100) was rejected: the denominator is an artifact of the decimal,
+# so a 0.01 change in the requirement would swing burst tolerance by ~50x.
+# Override per run with the WINDOW_K env var to check how sensitive a
+# conclusion is to this choice.
+if os.environ.get("WINDOW_K"):
+    BASE_SIM["window_k"] = int(os.environ["WINDOW_K"])
 
 def scenario_label(n: int, c_min: int, c_max: int,
                    sr_min: float, sr_max: float, U: Optional[float] = None) -> str:
@@ -819,6 +843,137 @@ def _run_single(args: tuple) -> dict:
             except FileNotFoundError:
                 pass
 
+def window_m(req: float, k: int) -> int:
+    """Smallest m with m/k >= req — the (m,k)-firm threshold for one task.
+
+    Mirrors the C++ computation in main.cpp exactly, epsilon included. The
+    nudge matters: `success_rate` is drawn as a 2-decimal float, and a bare
+    ceil overshoots by one wherever that float rounds up. math.ceil(0.55*100)
+    is 56 and math.ceil(0.56*100) is 57, both inside the sweep's SR band,
+    which would hold those tasks to a stricter rate than they requested.
+    """
+    return math.ceil(req * k - 1e-9)
+
+def warn_window_k(scenarios: list) -> None:
+    """Warn when the configured (m,k) window is too short for the strictest
+    reliability requirement in the scenario set. At k < 1/(1-req) we get
+    m = ceil(req*k) == k, i.e. the window silently demands zero misses —
+    a much harder constraint than the long-run `req` it was derived from."""
+    k = BASE_SIM.get("window_k", 100)
+    if k <= 0:
+        print("window_k <= 0 — (m,k) check disabled; sched_ratio_mk will be 1.0")
+        return
+    sr_max = max(s[4] for s in scenarios)
+    if window_m(sr_max, k) >= k:
+        # Smallest k admitting one miss. Searched on the same ceil the C++ side
+        # uses rather than 1/(1-req), which floating point rounds up by one at
+        # req=0.9 (1/(1-0.9) == 10.000000000000002).
+        floor_k = next(kk for kk in range(2, 10001) if window_m(sr_max, kk) < kk)
+        print(f"WARNING: window_k={k} is too short for success_rate up to {sr_max} "
+              f"— m == k, so those tasks are held to zero misses. "
+              f"Use window_k >= {floor_k} (WINDOW_K env var).")
+
+def extract_sweep_metrics(summary: dict) -> dict:
+    """Turn a C++ summary block into the per-run schedulability metrics.
+
+    Three views of the same run, from most to least forgiving:
+
+    - `sched_ratio`     — fraction of ids whose whole-run delivery rate meets
+                          success_rate_req. Insensitive to *when* misses land:
+                          an early burst can be averaged away by a long clean
+                          tail.
+    - `sched_ratio_mk`  — fraction of ids meeting the weakly-hard (m,k)-firm
+                          constraint, i.e. at least m = ceil(req * k) of every
+                          k consecutive instances (sliding). Burst-sensitive;
+                          converges to sched_ratio as k grows.
+    - `max_burst`       — longest run of consecutive undelivered instances over
+                          all ids. Parameter-free, so it can't be tuned.
+
+    An id with fewer than k instances has no complete window and is counted as
+    vacuously met — never as a violation. Same for ids the simulator never
+    touched (`generated == 0`), which are likewise not failures.
+    """
+    per_id = summary["per_id"]
+    if not per_id:
+        return {"sched_ratio": 0.0, "sched_ratio_mk": 0.0,
+                "max_burst": 0.0, "window_violation_rate": 0.0}
+
+    met = mk_met = max_burst = vacuous = 0
+    tot_windows = tot_violations = 0
+    for entry in per_id:
+        gen = entry["generated"]
+        if gen > 0 and 1 - entry["undelivered"] / gen >= entry["success_rate_req"]:
+            met += 1
+
+        windows    = entry.get("windows_total", 0)
+        violations = entry.get("window_violations", 0)
+        tot_windows    += windows
+        tot_violations += violations
+        if windows == 0:
+            vacuous += 1
+        if windows == 0 or violations == 0:
+            mk_met += 1
+        max_burst = max(max_burst, entry.get("max_consecutive_misses", 0))
+
+    return {
+        "sched_ratio":           met / len(per_id),
+        "sched_ratio_mk":        mk_met / len(per_id),
+        "max_burst":             float(max_burst),
+        "window_violation_rate": (tot_violations / tot_windows) if tot_windows else 0.0,
+        # Share of ids with fewer than k instances, hence no complete window.
+        # These are scored vacuously met, so they inflate sched_ratio_mk — the
+        # one way sched_ratio_mk can exceed sched_ratio. Reported so a run can
+        # tell you when the window is too long for the task set.
+        "vacuous_rate":          vacuous / len(per_id),
+    }
+
+# Metrics averaged across runs, each with 10th/90th-percentile bands. Keys must
+# exist in every dict returned by _run_single_sweep.
+SWEEP_METRICS = ("sched_ratio", "sched_ratio_mk", "max_burst",
+                 "window_violation_rate", "vacuous_rate", "total_energy")
+
+# Above this share of ids having no complete (m,k) window, sched_ratio_mk is
+# meaningfully inflated by vacuous passes and the run should say so.
+VACUOUS_WARN_THRESHOLD = 0.05
+
+def warn_vacuous(results: dict, depth: int) -> None:
+    """Report the worst vacuous_rate over a results grid. `depth` is how many
+    dict levels sit above the per-U metrics (2 for run_sweep's
+    [scen][sch][U], 3 for run_error_sweep's [err][scen][sch][U])."""
+    def leaves(node, d):
+        if d == 0:
+            yield from node.values()
+            return
+        for child in node.values():
+            yield from leaves(child, d - 1)
+
+    rates = [m["vacuous_rate"] for m in leaves(results, depth)]
+    if rates and max(rates) > VACUOUS_WARN_THRESHOLD:
+        print(f"NOTE: up to {100 * max(rates):.1f}% of tasks had fewer than "
+              f"k={BASE_SIM.get('window_k', 100)} instances at some grid point, so they "
+              f"pass the (m,k) check vacuously and inflate the windowed curve. "
+              f"Lower WINDOW_K or raise BASE_SIM['duration'] to shrink this.")
+
+def _percentile(xs: list, p: float) -> float:
+    s = sorted(xs)
+    if not s:
+        return 0.0
+    k = (len(s) - 1) * p / 100
+    f = int(k)
+    c = min(f + 1, len(s) - 1)
+    return s[f] + (s[c] - s[f]) * (k - f)
+
+def aggregate_runs(runs: list) -> dict:
+    """Mean + 10/90 band for every metric in SWEEP_METRICS. Shared by
+    run_sweep and run_error_sweep so the two can't drift apart."""
+    out = {}
+    for key in SWEEP_METRICS:
+        vals = [r[key] for r in runs]
+        out[key]            = sum(vals) / len(vals)
+        out[f"{key}_lo"]    = _percentile(vals, 10)
+        out[f"{key}_hi"]    = _percentile(vals, 90)
+    return out
+
 def _run_single_sweep(args: tuple) -> dict:
     """Sweep-mode worker: invokes main.o in 'summary' mode so the C++ side
     silences stdout, skips per-frame JSON building, and emits only a tiny
@@ -850,24 +1005,8 @@ def _run_single_sweep(args: tuple) -> dict:
         with open(log_file) as f:
             summary = json.load(f)
 
-        per_id = summary["per_id"]
-        if not per_id:
-            sched_ratio = 0.0
-        else:
-            met = 0
-            for entry in per_id:
-                gen = entry["generated"]
-                if gen <= 0:
-                    continue
-                ratio = 1 - entry["undelivered"] / gen
-                if ratio >= entry["success_rate_req"]:
-                    met += 1
-            sched_ratio = met / len(per_id)
-
-        return {
-            "sched_ratio":  sched_ratio,
-            "total_energy": float(summary["total_tx_power"]),
-        }
+        return dict(extract_sweep_metrics(summary),
+                    total_energy=float(summary["total_tx_power"]))
     finally:
         for path in (cfg_file, log_file):
             try:
@@ -999,34 +1138,27 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
                 in_flight[fut2] = key
     print()
 
-    def percentile(xs, p):
-        s = sorted(xs)
-        if not s:
-            return 0.0
-        k = (len(s) - 1) * p / 100
-        f = int(k)
-        c = min(f + 1, len(s) - 1)
-        return s[f] + (s[c] - s[f]) * (k - f)
-
     results = {scenario_label(*scen): {sch_name: {} for sch_name, _ in SCHEDULERS}
                for scen in SWEEP_SCENARIOS}
     for (scen_name, U, sch_name), runs in combo_runs.items():
-        ratios   = [r["sched_ratio"]  for r in runs]
-        energies = [r["total_energy"] for r in runs]
-        results[scen_name][sch_name][U] = {
-            "sched_ratio":     sum(ratios) / len(ratios),
-            "sched_ratio_lo":  percentile(ratios, 10),
-            "sched_ratio_hi":  percentile(ratios, 90),
-            "total_energy":    sum(energies) / len(energies),
-            "total_energy_lo": percentile(energies, 10),
-            "total_energy_hi": percentile(energies, 90),
-        }
+        results[scen_name][sch_name][U] = aggregate_runs(runs)
+    warn_vacuous(results, 2)
     return results
 
-def _draw_scenario_panel(ax_top, ax_bot, scen_name: str, sch_results: dict):
-    """Render the ratio (top) and total-power (bottom) curves for one scenario
-    onto a pre-existing pair of axes. Shared between the combined plot and the
-    per-scenario plots so they stay in sync."""
+# Rows drawn by both the sweep and error-sweep figures: (metric key, y label,
+# y limits or None to autoscale). Order here is the row order in every figure.
+PANEL_METRICS = [
+    ("sched_ratio_mk", "Windowed schedulability\n((m,k), met / total)", (-0.05, 1.05)),
+    ("sched_ratio",    "Schedulability ratio\n(met / total)",           (-0.05, 1.05)),
+    ("max_burst",      "Max consecutive misses",                        None),
+    ("total_energy",   "Energy (W·frame)",                              None),
+]
+
+def _draw_scenario_panel(axes, scen_name: str, sch_results: dict):
+    """Render one column of the sweep figure — one row per PANEL_METRICS entry
+    — onto pre-existing axes. Shared between the combined plot and the
+    per-scenario plots so they stay in sync. `axes` must be indexable with at
+    least len(PANEL_METRICS) entries."""
     colors     = plt.cm.tab10.colors
     # One distinct linestyle per scheduler — the list must be at least as long
     # as SCHEDULERS or two curves end up sharing a style.
@@ -1038,30 +1170,25 @@ def _draw_scenario_panel(ax_top, ax_bot, scen_name: str, sch_results: dict):
     for i, (sch_name, u_to_metrics) in enumerate(sch_results.items()):
         xs       = sorted(u_to_metrics.keys())
         xs_dodge = [x + (i - (n_sch - 1) / 2) * dx_step for x in xs]
-        ratio     = [u_to_metrics[u]["sched_ratio"]  for u in xs]
-        ratio_lo  = [max(0, r - u_to_metrics[u]["sched_ratio_lo"]) for u, r in zip(xs, ratio)]
-        ratio_hi  = [max(0, u_to_metrics[u]["sched_ratio_hi"] - r) for u, r in zip(xs, ratio)]
-        energy    = [u_to_metrics[u]["total_energy"] for u in xs]
-        energy_lo = [max(0, e - u_to_metrics[u]["total_energy_lo"]) for u, e in zip(xs, energy)]
-        energy_hi = [max(0, u_to_metrics[u]["total_energy_hi"] - e) for u, e in zip(xs, energy)]
-        color     = colors[i % len(colors)]
-        ls        = linestyles[i % len(linestyles)]
-        mk        = markers[i % len(markers)]
-        ax_top.plot(xs, ratio, color=color, linestyle=ls, marker=mk,
-                    markersize=7, linewidth=1.5, label=sch_name)
-        ax_bot.plot(xs, energy, color=color, linestyle=ls, marker=mk,
-                    markersize=7, linewidth=1.5, label=sch_name)
-        ax_top.errorbar(xs_dodge, ratio, yerr=[ratio_lo, ratio_hi], fmt="none",
-                        ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
-        ax_bot.errorbar(xs_dodge, energy, yerr=[energy_lo, energy_hi], fmt="none",
-                        ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
-    ax_top.set_title(scen_name)
-    ax_top.set_ylim(-0.05, 1.05)
-    ax_top.grid(True, alpha=0.3)
-    ax_top.legend()
-    ax_bot.set_xlabel("Utilization U")
-    ax_bot.grid(True, alpha=0.3)
-    ax_bot.legend()
+        color    = colors[i % len(colors)]
+        ls       = linestyles[i % len(linestyles)]
+        mk       = markers[i % len(markers)]
+        for row, (key, _label, _ylim) in enumerate(PANEL_METRICS):
+            vals = [u_to_metrics[u][key] for u in xs]
+            lo   = [max(0, v - u_to_metrics[u][f"{key}_lo"]) for u, v in zip(xs, vals)]
+            hi   = [max(0, u_to_metrics[u][f"{key}_hi"] - v) for u, v in zip(xs, vals)]
+            axes[row].plot(xs, vals, color=color, linestyle=ls, marker=mk,
+                           markersize=7, linewidth=1.5, label=sch_name)
+            axes[row].errorbar(xs_dodge, vals, yerr=[lo, hi], fmt="none",
+                               ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
+
+    for row, (_key, _label, ylim) in enumerate(PANEL_METRICS):
+        if ylim is not None:
+            axes[row].set_ylim(*ylim)
+        axes[row].grid(True, alpha=0.3)
+        axes[row].legend()
+    axes[0].set_title(scen_name)
+    axes[len(PANEL_METRICS) - 1].set_xlabel("Utilization U")
 
 def _safe_filename(s: str) -> str:
     """Make a scenario label safe to use as a filename component."""
@@ -1072,28 +1199,33 @@ def plot_schedulability(results: dict):
     n_scen     = len(scen_names)
     os.makedirs(TESTS_DIR, exist_ok=True)
 
-    # Combined figure: one column per scenario.
-    fig, axes = plt.subplots(2, n_scen, figsize=(6 * n_scen, 9), sharex="col")
+    n_rows = len(PANEL_METRICS)
+    title  = (f"Schedulability and Energy vs Utilization "
+              f"(m,k window k={BASE_SIM.get('window_k', 100)})")
+
+    # Combined figure: one column per scenario, one row per PANEL_METRICS entry.
+    fig, axes = plt.subplots(n_rows, n_scen, figsize=(6 * n_scen, 4.2 * n_rows),
+                             sharex="col")
     if n_scen == 1:
-        axes = axes.reshape(2, 1)
+        axes = axes.reshape(n_rows, 1)
     for col, scen_name in enumerate(scen_names):
-        _draw_scenario_panel(axes[0, col], axes[1, col], scen_name, results[scen_name])
-    axes[0, 0].set_ylabel("Schedulability ratio (met / total)")
-    axes[1, 0].set_ylabel("Energy (W·frame)")
-    plt.suptitle("Schedulability and Energy vs Utilization", fontsize=13)
+        _draw_scenario_panel(axes[:, col], scen_name, results[scen_name])
+    for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
+        axes[row, 0].set_ylabel(label)
+    plt.suptitle(title, fontsize=13)
     plt.tight_layout()
     out = os.path.join(TESTS_DIR, "results_schedulability.png")
     plt.savefig(out, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Schedulability plot saved to {out}")
 
-    # Per-scenario figures: same two-panel layout, one PNG each.
+    # Per-scenario figures: same layout, one PNG each.
     for scen_name in scen_names:
-        fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(7, 9), sharex=True)
-        _draw_scenario_panel(ax_top, ax_bot, scen_name, results[scen_name])
-        ax_top.set_ylabel("Schedulability ratio (met / total)")
-        ax_bot.set_ylabel("Energy (W·frame)")
-        plt.suptitle(f"Schedulability and Energy vs Utilization — {scen_name}", fontsize=12)
+        fig, axs = plt.subplots(n_rows, 1, figsize=(7, 4.2 * n_rows), sharex=True)
+        _draw_scenario_panel(axs, scen_name, results[scen_name])
+        for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
+            axs[row].set_ylabel(label)
+        plt.suptitle(f"{title} — {scen_name}", fontsize=12)
         plt.tight_layout()
         out = os.path.join(TESTS_DIR, f"results_schedulability_{_safe_filename(scen_name)}.png")
         plt.savefig(out, dpi=150, bbox_inches="tight")
@@ -1174,29 +1306,11 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
                 in_flight[fut2] = key
     print()
 
-    def percentile(xs, p):
-        s = sorted(xs)
-        if not s:
-            return 0.0
-        k = (len(s) - 1) * p / 100
-        f = int(k)
-        c = min(f + 1, len(s) - 1)
-        return s[f] + (s[c] - s[f]) * (k - f)
-
     results = {err: {scenario_label(*scen): {sch_name: {} for sch_name, _ in SCHEDULERS}
                      for scen in SWEEP_SCENARIOS}
                for err in PREDICT_ERRORS}
     for (err, scen_name, U, sch_name), runs in combo_runs.items():
-        ratios   = [r["sched_ratio"]  for r in runs]
-        energies = [r["total_energy"] for r in runs]
-        results[err][scen_name][sch_name][U] = {
-            "sched_ratio":     sum(ratios) / len(ratios),
-            "sched_ratio_lo":  percentile(ratios, 10),
-            "sched_ratio_hi":  percentile(ratios, 90),
-            "total_energy":    sum(energies) / len(energies),
-            "total_energy_lo": percentile(energies, 10),
-            "total_energy_hi": percentile(energies, 90),
-        }
+        results[err][scen_name][sch_name][U] = aggregate_runs(runs)
     # Replicate the predictor-independent schedulers across the non-zero
     # error levels — they were only dispatched at PREDICT_ERRORS[0].
     base_err = PREDICT_ERRORS[0]
@@ -1206,13 +1320,15 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
         for err in PREDICT_ERRORS[1:]:
             for scen_name in results[err]:
                 results[err][scen_name][sch_name] = results[base_err][scen_name][sch_name]
+    warn_vacuous(results, 3)
     return results
 
-def _draw_error_sweep_panel(ax_top, ax_bot, scen_name: str, err_to_sch: dict):
-    """Draw one scenario column of the error-sweep figure. Color/marker are
-    fixed per scheduler so the curves match the other plots; linestyle varies
-    with prediction_error. Predictor-independent schedulers (RM) are drawn
-    once — CHARM and CATS get one curve per error level."""
+def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
+    """Draw one scenario column of the error-sweep figure — one row per
+    PANEL_METRICS entry. Color/marker are fixed per scheduler so the curves
+    match the other plots; linestyle varies with prediction_error.
+    Predictor-independent schedulers (RM) are drawn once — CHARM and CATS get
+    one curve per error level."""
     colors  = plt.cm.tab10.colors
     markers = ["o", "s", "^", "D", "v", "P", "X"]
     err_linestyles = {err: ls for err, ls in zip(PREDICT_ERRORS, ["-", "--", "-.", ":"])}
@@ -1231,13 +1347,11 @@ def _draw_error_sweep_panel(ax_top, ax_bot, scen_name: str, err_to_sch: dict):
         if not u_to_m:
             continue
         color, mk = sch_style[sch_name]
-        xs    = sorted(u_to_m.keys())
-        ratio = [u_to_m[u]["sched_ratio"]  for u in xs]
-        ener  = [u_to_m[u]["total_energy"] for u in xs]
-        ax_top.plot(xs, ratio, color=color, linestyle="-", marker=mk,
-                    markersize=7, linewidth=1.5, label=sch_name)
-        ax_bot.plot(xs, ener, color=color, linestyle="-", marker=mk,
-                    markersize=7, linewidth=1.5, label=sch_name)
+        xs = sorted(u_to_m.keys())
+        for row, (key, _label, _ylim) in enumerate(PANEL_METRICS):
+            axes[row].plot(xs, [u_to_m[u][key] for u in xs], color=color,
+                           linestyle="-", marker=mk, markersize=7,
+                           linewidth=1.5, label=sch_name)
 
     # CHARM and CATS — one curve per error level, linestyle differentiates.
     for sch_name in (s for s, cfg in SCHEDULERS if not is_predictor_independent(cfg)):
@@ -1247,22 +1361,20 @@ def _draw_error_sweep_panel(ax_top, ax_bot, scen_name: str, err_to_sch: dict):
             if not u_to_m:
                 continue
             xs    = sorted(u_to_m.keys())
-            ratio = [u_to_m[u]["sched_ratio"]  for u in xs]
-            ener  = [u_to_m[u]["total_energy"] for u in xs]
             ls    = err_linestyles[err]
             label = f"{sch_name} (e={err:.2f})"
-            ax_top.plot(xs, ratio, color=color, linestyle=ls, marker=mk,
-                        markersize=6, linewidth=1.4, label=label)
-            ax_bot.plot(xs, ener, color=color, linestyle=ls, marker=mk,
-                        markersize=6, linewidth=1.4, label=label)
+            for row, (key, _label, _ylim) in enumerate(PANEL_METRICS):
+                axes[row].plot(xs, [u_to_m[u][key] for u in xs], color=color,
+                               linestyle=ls, marker=mk, markersize=6,
+                               linewidth=1.4, label=label)
 
-    ax_top.set_title(scen_name)
-    ax_top.set_ylim(-0.05, 1.05)
-    ax_top.grid(True, alpha=0.3)
-    ax_top.legend(fontsize=8, ncol=1)
-    ax_bot.set_xlabel("Utilization U")
-    ax_bot.grid(True, alpha=0.3)
-    ax_bot.legend(fontsize=8, ncol=1)
+    for row, (_key, _label, ylim) in enumerate(PANEL_METRICS):
+        if ylim is not None:
+            axes[row].set_ylim(*ylim)
+        axes[row].grid(True, alpha=0.3)
+        axes[row].legend(fontsize=8, ncol=1)
+    axes[0].set_title(scen_name)
+    axes[len(PANEL_METRICS) - 1].set_xlabel("Utilization U")
 
 def plot_error_sweep(results: dict):
     """Combined + per-scenario figures for the prediction-error sweep.
@@ -1275,16 +1387,18 @@ def plot_error_sweep(results: dict):
     by_scen = {scen: {err: results[err][scen] for err in PREDICT_ERRORS}
                for scen in scen_names}
 
-    fig, axes = plt.subplots(2, n_scen, figsize=(6 * n_scen, 9), sharex="col")
+    n_rows = len(PANEL_METRICS)
+    title  = (f"Prediction-Error Sweep (m,k window k={BASE_SIM.get('window_k', 100)})")
+
+    fig, axes = plt.subplots(n_rows, n_scen, figsize=(6 * n_scen, 4.2 * n_rows),
+                             sharex="col")
     if n_scen == 1:
-        axes = axes.reshape(2, 1)
+        axes = axes.reshape(n_rows, 1)
     for col, scen_name in enumerate(scen_names):
-        _draw_error_sweep_panel(axes[0, col], axes[1, col],
-                                scen_name, by_scen[scen_name])
-    axes[0, 0].set_ylabel("Schedulability ratio (met / total)")
-    axes[1, 0].set_ylabel("Energy (W·frame)")
-    plt.suptitle("Schedulability and Energy vs Utilization — Prediction-Error Sweep",
-                 fontsize=13)
+        _draw_error_sweep_panel(axes[:, col], scen_name, by_scen[scen_name])
+    for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
+        axes[row, 0].set_ylabel(label)
+    plt.suptitle(f"Schedulability and Energy vs Utilization — {title}", fontsize=13)
     plt.tight_layout()
     out = os.path.join(TESTS_DIR, "results_error_sweep.png")
     plt.savefig(out, dpi=150, bbox_inches="tight")
@@ -1292,11 +1406,11 @@ def plot_error_sweep(results: dict):
     print(f"Error-sweep plot saved to {out}")
 
     for scen_name in scen_names:
-        fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(7, 9), sharex=True)
-        _draw_error_sweep_panel(ax_top, ax_bot, scen_name, by_scen[scen_name])
-        ax_top.set_ylabel("Schedulability ratio (met / total)")
-        ax_bot.set_ylabel("Energy (W·frame)")
-        plt.suptitle(f"Prediction-Error Sweep", fontsize=12)
+        fig, axs = plt.subplots(n_rows, 1, figsize=(7, 4.2 * n_rows), sharex=True)
+        _draw_error_sweep_panel(axs, scen_name, by_scen[scen_name])
+        for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
+            axs[row].set_ylabel(label)
+        plt.suptitle(f"{title} — {scen_name}", fontsize=12)
         plt.tight_layout()
         out = os.path.join(TESTS_DIR, f"results_error_sweep_{_safe_filename(scen_name)}.png")
         plt.savefig(out, dpi=150, bbox_inches="tight")
@@ -1413,7 +1527,9 @@ if __name__ == "__main__":
     t_start = time.perf_counter()
 
     if mode == "sweep":
-        print(f"Running schedulability sweep ({n_runs} runs/point, {n_workers} workers)")
+        print(f"Running schedulability sweep ({n_runs} runs/point, {n_workers} workers, "
+              f"window_k={BASE_SIM.get('window_k', 100)})")
+        warn_window_k(SWEEP_SCENARIOS)
         results = run_sweep(n_runs, n_workers)
         plot_schedulability(results)
         print(f"Total elapsed: {format_duration(time.perf_counter() - t_start)}")
@@ -1421,7 +1537,9 @@ if __name__ == "__main__":
 
     if mode == "error_sweep":
         print(f"Running prediction-error sweep ({n_runs} runs/point, "
-              f"{n_workers} workers, errors={PREDICT_ERRORS})")
+              f"{n_workers} workers, errors={PREDICT_ERRORS}, "
+              f"window_k={BASE_SIM.get('window_k', 100)})")
+        warn_window_k(SWEEP_SCENARIOS)
         results = run_error_sweep(n_runs, n_workers)
         plot_error_sweep(results)
         print(f"Total elapsed: {format_duration(time.perf_counter() - t_start)}")
