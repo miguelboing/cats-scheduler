@@ -187,13 +187,15 @@ BASE_RM_SCHEDULER_25W  = dict(BASE_RM_SCHEDULER, tx_power=25)
 # The two sweep modes deliberately use *different* rosters.
 #
 # `sweep` (predict_error = 0, see BASE_SIM) is the full comparison: it carries
-# both CHARM orderings alongside RM so the figure separates the two effects
-# under study — the retransmission/power policy (RM vs CHARM) and the queue
-# discipline (CHARM vs CHEDF) — with the predictor perfect, so neither gap can
-# be blamed on prediction noise.
+# the complete 2x2 of the two effects under study — retransmission/power policy
+# (RM/EDF vs CHARM/CHEDF) crossed with queue discipline (RM/CHARM vs EDF/CHEDF)
+# — so each gap can be read against its own control, with the predictor perfect
+# so none of them can be blamed on prediction noise.
 SCHEDULERS = [
     ("RM_10W",     BASE_RM_SCHEDULER),
     ("RM_25W",     BASE_RM_SCHEDULER_25W),
+    ("EDF_10W",    BASE_EDF_SCHEDULER),
+    ("EDF_25W",    BASE_EDF_SCHEDULER_25W),
     ("CHARM_10W",  BASE_SCHEDULER),
     ("CHARM_25W",  BASE_SCHEDULER_25W),
     ("CHEDF_10W",  BASE_CHEDF_SCHEDULER),
@@ -201,8 +203,8 @@ SCHEDULERS = [
     ("CATS",       BASE_CATS_SCHEDULER),
 ]
 
-# `error_sweep` draws one curve per scheduler *per error level*, so a 7-entry
-# roster would put ~17 curves on each axis. It is trimmed to the predictor-
+# `error_sweep` draws one curve per scheduler *per error level*, so the 9-entry
+# roster would put ~21 curves on each axis. It is trimmed to the predictor-
 # sensitive schedulers plus a fixed-power reference: CHEDF rather than CHARM
 # (same queue discipline as CATS, so the surviving gap is the power policy),
 # and EDF rather than RM for the same reason. EDF ignores the predictor, so it
@@ -965,7 +967,8 @@ def extract_sweep_metrics(summary: dict) -> dict:
     }
 
 # Metrics averaged across runs, each with 10th/90th-percentile bands. Keys must
-# exist in every dict returned by _run_single_sweep.
+# exist in every dict returned by _run_single_sweep. The bands are kept in the
+# results dict for offline reading only — neither figure plots them any more.
 SWEEP_METRICS = ("sched_ratio", "sched_ratio_mk", "max_burst",
                  "window_violation_rate", "vacuous_rate", "total_energy")
 
@@ -1204,33 +1207,28 @@ def _draw_scenario_panel(axes, scen_name: str, sch_results: dict):
     # One distinct linestyle per scheduler — the list must be at least as long
     # as the roster or two curves end up sharing a style.
     linestyles = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (5, 1)),
-                  (0, (1, 1)), (0, (7, 2, 1, 2))]
-    markers    = ["o", "s", "^", "D", "v", "P", "X", "*"]
-    # Taken from the data, not from SCHEDULERS, so the dodge stays correct when
-    # a caller draws a different roster.
-    n_sch      = len(sch_results)
-    dx_step    = 0.012  # horizontal dodge between schedulers (in U units)
+                  (0, (1, 1)), (0, (7, 2, 1, 2)), (0, (3, 1, 1, 1, 1, 1))]
+    markers    = ["o", "s", "^", "D", "v", "P", "X", "*", "h"]
 
+    # Only the mean is drawn. aggregate_runs still records the 10/90 band per
+    # metric (`<key>_lo` / `<key>_hi`) in the results dict, but the bands were
+    # overlapping into an unreadable smear with a roster this size, so read
+    # them from the raw results rather than the figure.
     for i, (sch_name, u_to_metrics) in enumerate(sch_results.items()):
-        xs       = sorted(u_to_metrics.keys())
-        xs_dodge = [x + (i - (n_sch - 1) / 2) * dx_step for x in xs]
-        color    = colors[i % len(colors)]
-        ls       = linestyles[i % len(linestyles)]
-        mk       = markers[i % len(markers)]
+        xs    = sorted(u_to_metrics.keys())
+        color = colors[i % len(colors)]
+        ls    = linestyles[i % len(linestyles)]
+        mk    = markers[i % len(markers)]
         for row, (key, _label, _ylim) in enumerate(PANEL_METRICS):
-            vals = [u_to_metrics[u][key] for u in xs]
-            lo   = [max(0, v - u_to_metrics[u][f"{key}_lo"]) for u, v in zip(xs, vals)]
-            hi   = [max(0, u_to_metrics[u][f"{key}_hi"] - v) for u, v in zip(xs, vals)]
-            axes[row].plot(xs, vals, color=color, linestyle=ls, marker=mk,
-                           markersize=7, linewidth=1.5, label=sch_name)
-            axes[row].errorbar(xs_dodge, vals, yerr=[lo, hi], fmt="none",
-                               ecolor=color, elinewidth=1.2, capsize=3, alpha=0.55)
+            axes[row].plot(xs, [u_to_metrics[u][key] for u in xs], color=color,
+                           linestyle=ls, marker=mk, markersize=7,
+                           linewidth=1.5, label=sch_name)
 
     for row, (_key, _label, ylim) in enumerate(PANEL_METRICS):
         if ylim is not None:
             axes[row].set_ylim(*ylim)
         axes[row].grid(True, alpha=0.3)
-        axes[row].legend()
+        axes[row].legend(fontsize=8, ncol=1)
     axes[0].set_title(scen_name)
     axes[len(PANEL_METRICS) - 1].set_xlabel("Utilization U")
 
