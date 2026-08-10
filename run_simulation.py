@@ -96,14 +96,22 @@ def make_config(test: dict, seed: Optional[int] = None) -> dict:
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+# CHARM as published: dequeues by shortest period (rate-monotonic order).
 BASE_SCHEDULER = {
     "type": "CHARM",
     "tx_power": 10,
     "frequency": 14074000,
-    "rx_period": 5
+    "rx_period": 5,
 }
 
 BASE_SCHEDULER_25W = dict(BASE_SCHEDULER, tx_power=25)
+
+# CHEDF — CHARM's retransmission/power policy over an EDF queue. A separate
+# scheduler type (C++ subclasses CHARM and overrides only the packet choice),
+# so it takes the same parameters and differs from BASE_SCHEDULER in nothing
+# but `type`. A CHARM/CHEDF pair on the same axes isolates queue discipline.
+BASE_CHEDF_SCHEDULER     = dict(BASE_SCHEDULER, type="CHEDF")
+BASE_CHEDF_SCHEDULER_25W = dict(BASE_CHEDF_SCHEDULER, tx_power=25)
 
 BASE_CATS_SCHEDULER = {
     "type": "CATS",
@@ -122,7 +130,7 @@ BASE_CHANNELS = [
 
 BASE_SIM = {
     "duration":      250000,  # Sufficient for this steady state matrix
-    "predict_error": 0.10,    # ±half-width of uniform noise injected per predicted decode probability
+    "predict_error": 0.00,    # ±half-width of uniform noise injected per predicted decode probability
     "window_k":      100,     # weakly-hard (m,k) window, in instances — see below
 }
 
@@ -167,20 +175,43 @@ SCENARIOS = [
     (0.50, 8,  1, 3, 0.50, 0.90),
 ]
 
+BASE_EDF_SCHEDULER     = {"type": "EDF", "tx_power": 10, "frequency": 14074000}
+BASE_EDF_SCHEDULER_25W = dict(BASE_EDF_SCHEDULER, tx_power=25)
+BASE_RM_SCHEDULER      = {"type": "Rate_M", "tx_power": 10, "frequency": 14074000}
+BASE_RM_SCHEDULER_25W  = dict(BASE_RM_SCHEDULER, tx_power=25)
+
 # Fixed-power baselines are run at both power levels CATS can pick from
 # (CATS predicts over {1, 10, 25} W), so a CATS curve can be read against a
 # baseline that spends the same per-frame energy as its high-power choice.
-# EDF replaced Rate-Monotonic as the fixed-power baseline so that every
-# scheduler on the plot dequeues in the same (earliest-deadline) order —
-# CHARM and CATS already did. A gap between curves is then attributable to the
-# retransmission/power policy rather than to the queue discipline. Swap the
-# type back to "Rate_M" (and the label) to reproduce the older comparison, or
-# append the Rate_M entries to run both on the same axes.
+#
+# The two sweep modes deliberately use *different* rosters.
+#
+# `sweep` (predict_error = 0, see BASE_SIM) is the full comparison: it carries
+# both CHARM orderings alongside RM so the figure separates the two effects
+# under study — the retransmission/power policy (RM vs CHARM) and the queue
+# discipline (CHARM vs CHEDF) — with the predictor perfect, so neither gap can
+# be blamed on prediction noise.
 SCHEDULERS = [
-    ("EDF_10W",    { "type": "EDF", "tx_power": 10, "frequency": 14074000 }),
-    ("EDF_25W",    { "type": "EDF", "tx_power": 25, "frequency": 14074000 }),
+    ("RM_10W",     BASE_RM_SCHEDULER),
+    ("RM_25W",     BASE_RM_SCHEDULER_25W),
     ("CHARM_10W",  BASE_SCHEDULER),
     ("CHARM_25W",  BASE_SCHEDULER_25W),
+    ("CHEDF_10W",  BASE_CHEDF_SCHEDULER),
+    ("CHEDF_25W",  BASE_CHEDF_SCHEDULER_25W),
+    ("CATS",       BASE_CATS_SCHEDULER),
+]
+
+# `error_sweep` draws one curve per scheduler *per error level*, so a 7-entry
+# roster would put ~17 curves on each axis. It is trimmed to the predictor-
+# sensitive schedulers plus a fixed-power reference: CHEDF rather than CHARM
+# (same queue discipline as CATS, so the surviving gap is the power policy),
+# and EDF rather than RM for the same reason. EDF ignores the predictor, so it
+# contributes one flat curve regardless of the error axis.
+ERROR_SWEEP_SCHEDULERS = [
+    ("EDF_10W",    BASE_EDF_SCHEDULER),
+    ("EDF_25W",    BASE_EDF_SCHEDULER_25W),
+    ("CHEDF_10W",  BASE_CHEDF_SCHEDULER),
+    ("CHEDF_25W",  BASE_CHEDF_SCHEDULER_25W),
     ("CATS",       BASE_CATS_SCHEDULER),
 ]
 
@@ -1153,10 +1184,14 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
 
 # Rows drawn by both the sweep and error-sweep figures: (metric key, y label,
 # y limits or None to autoscale). Order here is the row order in every figure.
+#
+# `max_burst` is deliberately not a row: it is still computed and aggregated
+# (see SWEEP_METRICS) and still worth reading from the raw results, but its
+# scale spans three orders of magnitude across U, which flattens the
+# low-utilization end into an unreadable line on a shared axis.
 PANEL_METRICS = [
-    ("sched_ratio_mk", "Windowed schedulability\n((m,k), met / total)", (-0.05, 1.05)),
     ("sched_ratio",    "Schedulability ratio\n(met / total)",           (-0.05, 1.05)),
-    ("max_burst",      "Max consecutive misses",                        None),
+    ("sched_ratio_mk", "Windowed schedulability\n((m,k), met / total)", (-0.05, 1.05)),
     ("total_energy",   "Energy (W·frame)",                              None),
 ]
 
@@ -1167,10 +1202,13 @@ def _draw_scenario_panel(axes, scen_name: str, sch_results: dict):
     least len(PANEL_METRICS) entries."""
     colors     = plt.cm.tab10.colors
     # One distinct linestyle per scheduler — the list must be at least as long
-    # as SCHEDULERS or two curves end up sharing a style.
-    linestyles = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (5, 1))]
-    markers    = ["o", "s", "^", "D", "v", "P", "X"]
-    n_sch      = len(SCHEDULERS)
+    # as the roster or two curves end up sharing a style.
+    linestyles = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (5, 1)),
+                  (0, (1, 1)), (0, (7, 2, 1, 2))]
+    markers    = ["o", "s", "^", "D", "v", "P", "X", "*"]
+    # Taken from the data, not from SCHEDULERS, so the dodge stays correct when
+    # a caller draws a different roster.
+    n_sch      = len(sch_results)
     dx_step    = 0.012  # horizontal dodge between schedulers (in U units)
 
     for i, (sch_name, u_to_metrics) in enumerate(sch_results.items()):
@@ -1229,6 +1267,9 @@ def plot_schedulability(results: dict):
     for scen_name in scen_names:
         fig, axs = plt.subplots(n_rows, 1, figsize=(7, 4.2 * n_rows), sharex=True)
         _draw_scenario_panel(axs, scen_name, results[scen_name])
+        # The panel titles each column for the combined figure; here the
+        # scenario is already in the suptitle, so drop the duplicate.
+        axs[0].set_title("")
         for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
             axs[row].set_ylabel(label)
         plt.suptitle(f"{title} — {scen_name}", fontsize=12)
@@ -1242,10 +1283,14 @@ def plot_schedulability(results: dict):
 
 def run_error_sweep(n_runs: int, n_workers: int) -> dict:
     """Run the schedulability sweep once per predict_error level in
-    PREDICT_ERRORS. RM ignores the predictor, so it is dispatched only at
-    PREDICT_ERRORS[0] (must be 0.0) and replicated across the other levels
-    when assembling the result dict. Returns
-    results[err][scen_name][sch_name][U] = metrics."""
+    PREDICT_ERRORS. Predictor-independent schedulers ignore the predictor, so
+    they are dispatched only at PREDICT_ERRORS[0] (must be 0.0) and replicated
+    across the other levels when assembling the result dict. Returns
+    results[err][scen_name][sch_name][U] = metrics.
+
+    Iterates ERROR_SWEEP_SCHEDULERS, not SCHEDULERS — this figure carries a
+    trimmed roster because every predictor-sensitive scheduler contributes one
+    curve per error level."""
     assert PREDICT_ERRORS[0] == 0.0, "PREDICT_ERRORS[0] must be 0.0"
 
     jobs = []
@@ -1254,7 +1299,7 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
         for n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS:
             scen_name = scenario_label(n, c_min, c_max, sr_min, sr_max)
             for U in U_VALUES:
-                for sch_name, scheduler in SCHEDULERS:
+                for sch_name, scheduler in ERROR_SWEEP_SCHEDULERS:
                     # Predictor-independent schedulers (RM) — run them once.
                     if is_predictor_independent(scheduler) and err != PREDICT_ERRORS[0]:
                         continue
@@ -1279,7 +1324,8 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
     total = len(jobs)
     print(f"  [error_sweep] dispatching {total} sims "
           f"({len(PREDICT_ERRORS)} err x {len(SWEEP_SCENARIOS)} scen x "
-          f"{len(U_VALUES)} U x sch x {n_runs} runs; RM dedup'd)", flush=True)
+          f"{len(U_VALUES)} U x {len(ERROR_SWEEP_SCHEDULERS)} sch x {n_runs} runs; "
+          f"predictor-independent dedup'd)", flush=True)
 
     ctx     = mp.get_context("spawn")
     window  = max(4 * n_workers, n_workers + 8)
@@ -1312,7 +1358,7 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
                 in_flight[fut2] = key
     print()
 
-    results = {err: {scenario_label(*scen): {sch_name: {} for sch_name, _ in SCHEDULERS}
+    results = {err: {scenario_label(*scen): {sch_name: {} for sch_name, _ in ERROR_SWEEP_SCHEDULERS}
                      for scen in SWEEP_SCENARIOS}
                for err in PREDICT_ERRORS}
     for (err, scen_name, U, sch_name), runs in combo_runs.items():
@@ -1320,7 +1366,7 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
     # Replicate the predictor-independent schedulers across the non-zero
     # error levels — they were only dispatched at PREDICT_ERRORS[0].
     base_err = PREDICT_ERRORS[0]
-    for sch_name, scheduler in SCHEDULERS:
+    for sch_name, scheduler in ERROR_SWEEP_SCHEDULERS:
         if not is_predictor_independent(scheduler):
             continue
         for err in PREDICT_ERRORS[1:]:
@@ -1333,20 +1379,20 @@ def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
     """Draw one scenario column of the error-sweep figure — one row per
     PANEL_METRICS entry. Color/marker are fixed per scheduler so the curves
     match the other plots; linestyle varies with prediction_error.
-    Predictor-independent schedulers (RM) are drawn once — CHARM and CATS get
+    Predictor-independent schedulers (EDF) are drawn once — CHEDF and CATS get
     one curve per error level."""
     colors  = plt.cm.tab10.colors
     markers = ["o", "s", "^", "D", "v", "P", "X"]
     err_linestyles = {err: ls for err, ls in zip(PREDICT_ERRORS, ["-", "--", "-.", ":"])}
 
-    # Stable scheduler→(color, marker) mapping derived from SCHEDULERS order.
+    # Stable scheduler→(color, marker) mapping derived from roster order.
     sch_style = {sch_name: (colors[i % len(colors)], markers[i % len(markers)])
-                 for i, (sch_name, _) in enumerate(SCHEDULERS)}
+                 for i, (sch_name, _) in enumerate(ERROR_SWEEP_SCHEDULERS)}
 
     base_err = PREDICT_ERRORS[0]
 
     # Predictor-independent schedulers first — one solid curve each.
-    for sch_name, scheduler in SCHEDULERS:
+    for sch_name, scheduler in ERROR_SWEEP_SCHEDULERS:
         if not is_predictor_independent(scheduler):
             continue
         u_to_m = err_to_sch[base_err].get(sch_name, {})
@@ -1359,8 +1405,9 @@ def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
                            linestyle="-", marker=mk, markersize=7,
                            linewidth=1.5, label=sch_name)
 
-    # CHARM and CATS — one curve per error level, linestyle differentiates.
-    for sch_name in (s for s, cfg in SCHEDULERS if not is_predictor_independent(cfg)):
+    # Predictor-sensitive schedulers — one curve per error level, linestyle
+    # differentiates.
+    for sch_name in (s for s, cfg in ERROR_SWEEP_SCHEDULERS if not is_predictor_independent(cfg)):
         color, mk = sch_style[sch_name]
         for err in PREDICT_ERRORS:
             u_to_m = err_to_sch[err].get(sch_name, {})
@@ -1414,6 +1461,7 @@ def plot_error_sweep(results: dict):
     for scen_name in scen_names:
         fig, axs = plt.subplots(n_rows, 1, figsize=(7, 4.2 * n_rows), sharex=True)
         _draw_error_sweep_panel(axs, scen_name, by_scen[scen_name])
+        axs[0].set_title("")   # already in the suptitle
         for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
             axs[row].set_ylabel(label)
         plt.suptitle(f"{title} — {scen_name}", fontsize=12)
@@ -1438,11 +1486,17 @@ def write_experiment_params(mode: str, n_runs: int, run_name: Optional[str]) -> 
         "master_seed": MASTER_SEED,
         "started_at":  time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "simulation":  BASE_SIM,
-        "schedulers":  {name: cfg for name, cfg in SCHEDULERS},
+        # The two sweep modes iterate different rosters — dump the one this
+        # run actually used, or the snapshot won't reproduce the figure.
+        "schedulers":  {name: cfg for name, cfg in
+                        (ERROR_SWEEP_SCHEDULERS if mode == "error_sweep"
+                         else SCHEDULERS)},
         "channels":    BASE_CHANNELS,
     }
 
-    if mode == "sweep":
+    # error_sweep drives SWEEP_SCENARIOS too, so it takes this branch — only
+    # `tests` mode runs the fixed-U SCENARIOS list.
+    if mode in ("sweep", "error_sweep"):
         params["scenarios"] = {
             "SWEEP_SCENARIOS": [
                 {"n": n, "c_min": c_min, "c_max": c_max,
@@ -1451,6 +1505,8 @@ def write_experiment_params(mode: str, n_runs: int, run_name: Optional[str]) -> 
             ],
             "U_VALUES": U_VALUES,
         }
+        if mode == "error_sweep":
+            params["predict_errors"] = PREDICT_ERRORS
     else:
         params["scenarios"] = {
             "SCENARIOS": [

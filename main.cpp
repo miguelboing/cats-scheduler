@@ -128,6 +128,17 @@ int main(int argc, char* argv[])
             system_tick
         );
     }
+    else if (sched_type == "CHEDF")
+    {
+        /* Same parameters as CHARM — it is CHARM's policy over an EDF queue. */
+        scheduler = std::make_unique<CHEDF_scheduler>(
+            sched_cfg["tx_power"],
+            sched_cfg["frequency"],
+            sched_cfg["rx_period"],
+            &buffer,
+            system_tick
+        );
+    }
     else if (sched_type == "EDF")
     {
         scheduler = std::make_unique<EDF_scheduler>(
