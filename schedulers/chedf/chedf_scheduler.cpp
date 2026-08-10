@@ -2,11 +2,11 @@
 #include <algorithm>
 #include <numeric>
 
-#include "charm_scheduler.hpp"
+#include "chedf_scheduler.hpp"
 
-CHARM_scheduler::CHARM_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency), rx_period(rx_period), transmission_prob(0) {};
+CHEDF_scheduler::CHEDF_scheduler(unsigned int tx_power, unsigned int frequency, unsigned int rx_period, BufferPacket* buffer, std::shared_ptr<unsigned int> sys_tick): BaseScheduler(buffer, sys_tick), tx_power(tx_power), frequency(frequency), rx_period(rx_period), transmission_prob(0) {};
 
-scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
+scheduled_frame_t CHEDF_scheduler::do_schedule_frame(void)
 {
     scheduled_frame_t scheduled_frame;
     scheduled_frame.transmission_power = this->tx_power;
@@ -19,16 +19,20 @@ scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
     }
     else /* If it is not try to schedule a packet */
     {
-        /* Find the packet with the smaller period */
+        /* Find the packet with the earliest deadline. This is the one line of
+           policy that separates CHEDF from CHARM -- everything below is
+           CHARM's retransmission rule, kept identical on purpose.
+
+           Unlike CHARM's period comparator this needs no is_periodic guard: a
+           deadline is well defined for aperiodic packets too, so every
+           buffered packet is rankable and none has to be skipped. */
         auto lowest_it = std::min_element(this->buffer_packet->begin(),
                                           this->buffer_packet->end(),
                                           [](const packet_t& a, const packet_t& b) {
-                                              if (!a.is_periodic) return false;
-                                              if (!b.is_periodic) return true;
-                                              return a.period < b.period;
+                                              return a.deadline < b.deadline;
                                           });
 
-        if (lowest_it != this->buffer_packet->end() && lowest_it->is_periodic)
+        if (lowest_it != this->buffer_packet->end())
         {
             scheduled_frame.packet = &(*lowest_it);
             scheduled_frame.radio_mode = TX_MODE;
@@ -69,13 +73,13 @@ scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
     return scheduled_frame;
 }
 
-void CHARM_scheduler::receive_prediction(const std::vector<double>& pred_probs)
+void CHEDF_scheduler::receive_prediction(const std::vector<double>& pred_probs)
 {
     this->transmission_prob = pred_probs[0]; /* Only tx_power is predicted */
 }
 
-std::string CHARM_scheduler::get_name() const {
+std::string CHEDF_scheduler::get_name() const {
     /* Power is part of the name so runs at different tx_power don't overwrite
        each other's scheduled-packet logs. */
-    return "CHARM_" + std::to_string(this->tx_power) + "W";
+    return "CHEDF_" + std::to_string(this->tx_power) + "W";
 }
