@@ -42,11 +42,29 @@ FREQ_HZ = 14_074_000
 # parent process.
 rs.BASE_SIM = {
     "duration":      160,   # capped by CSV length
-    "predict_error": 0.20,  # ±half-width of uniform noise on each predicted decode probability
+    "predict_error": 0.10,  # ±half-width of uniform noise on each predicted decode probability
+    # Kept only because main.cpp expects the key. 160 ticks yields ~1-17
+    # instances per id, nowhere near k, so every id has no complete window and
+    # is scored vacuously met — the metric carries no information here, which
+    # is why PANEL_METRICS below drops its row. It is meaningful only in
+    # run_simulation.py's 250k-tick sweep.
+    "window_k":      100,
 }
 
-# error_sweep mode overrides predict_error per level and so ignores the 0.20
-# above. Levels are inherited from run_simulation (PREDICT_ERRORS, currently
+# Two rows instead of run_simulation's three: the windowed ((m,k)) panel is
+# dropped because at this duration it is vacuously 1.0 everywhere (see above).
+# `sched_ratio_mk` stays in SWEEP_METRICS and so is still aggregated into the
+# results dict; it just isn't drawn. Both figures read PANEL_METRICS by name at
+# call time and size themselves from len(), so patching it here is enough.
+rs.PANEL_METRICS = [m for m in rs.PANEL_METRICS if m[0] != "sched_ratio_mk"]
+
+# warn_vacuous exists to flag a windowed curve inflated by short-lived ids.
+# With that curve gone the warning would fire on every run and mean nothing,
+# so put the threshold out of reach.
+rs.VACUOUS_WARN_THRESHOLD = 2.0
+
+# error_sweep mode overrides predict_error per level and so ignores the value
+# set above. Levels are inherited from run_simulation (PREDICT_ERRORS, currently
 # [0.0, 0.15, 0.30]) to keep both experiments on the same axis; patch
 # rs.PREDICT_ERRORS here if the replay experiment needs its own. The first
 # level must be 0.0 — run_error_sweep asserts it, then dispatches the
@@ -65,14 +83,35 @@ rs.BASE_CHANNELS = [{
 # CATS picks from — so a CATS curve can be read against a baseline spending
 # comparable per-frame energy. The ReplayChannel resolves all three powers from
 # the CSV, so 25 W replays real recorded outcomes rather than an extrapolation.
-# Labels mirror run_simulation.SCHEDULERS so curves are named the same across
-# both experiments.
+#
+# Both rosters mirror run_simulation's, with only the channel and frequency
+# rebound, so curve names and figure layout match across the two experiments.
+# `sweep` carries the full 9 (RM / EDF / CHARM / CHEDF / CATS); `error_sweep`
+# carries the trimmed 5, since each predictor-sensitive scheduler draws one
+# curve per error level.
+def _sched(cfg: dict) -> dict:
+    return dict(cfg, frequency=FREQ_HZ)
+
 rs.SCHEDULERS = [
-    ("Rate_M_10W", {"type": "Rate_M", "tx_power": 10, "frequency": FREQ_HZ}),
-    ("Rate_M_25W", {"type": "Rate_M", "tx_power": 25, "frequency": FREQ_HZ}),
-    ("CHARM_10W",  {"type": "CHARM",  "tx_power": 10, "frequency": FREQ_HZ, "rx_period": 5}),
-    ("CHARM_25W",  {"type": "CHARM",  "tx_power": 25, "frequency": FREQ_HZ, "rx_period": 5}),
-    ("CATS",       {"type": "CATS",   "frequency": FREQ_HZ, "belief_threshold": 0.7, "utilization_threshold": 0.95}),
+    ("RM_10W",     _sched(rs.BASE_RM_SCHEDULER)),
+    ("RM_25W",     _sched(rs.BASE_RM_SCHEDULER_25W)),
+    ("EDF_10W",    _sched(rs.BASE_EDF_SCHEDULER)),
+    ("EDF_25W",    _sched(rs.BASE_EDF_SCHEDULER_25W)),
+    ("CHARM_10W",  _sched(rs.BASE_SCHEDULER)),
+    ("CHARM_25W",  _sched(rs.BASE_SCHEDULER_25W)),
+    ("CHEDF_10W",  _sched(rs.BASE_CHEDF_SCHEDULER)),
+    ("CHEDF_25W",  _sched(rs.BASE_CHEDF_SCHEDULER_25W)),
+    ("CATS",       {"type": "CATS", "frequency": FREQ_HZ,
+                    "belief_threshold": 0.7, "utilization_threshold": 0.95}),
+]
+
+rs.ERROR_SWEEP_SCHEDULERS = [
+    ("EDF_10W",    _sched(rs.BASE_EDF_SCHEDULER)),
+    ("EDF_25W",    _sched(rs.BASE_EDF_SCHEDULER_25W)),
+    ("CHEDF_10W",  _sched(rs.BASE_CHEDF_SCHEDULER)),
+    ("CHEDF_25W",  _sched(rs.BASE_CHEDF_SCHEDULER_25W)),
+    ("CATS",       {"type": "CATS", "frequency": FREQ_HZ,
+                    "belief_threshold": 0.7, "utilization_threshold": 0.95}),
 ]
 
 # Three scenarios — same axes as run_simulation's SWEEP_SCENARIOS, just
@@ -110,7 +149,7 @@ def main() -> None:
     print(f"Replay {mode} — {n_runs} runs/point   {n_workers} workers   "
           f"duration={rs.BASE_SIM['duration']}   "
           f"scenarios={len(rs.SWEEP_SCENARIOS)}   U-points={len(rs.U_VALUES)}   "
-          f"schedulers={len(rs.SCHEDULERS)}"
+          f"schedulers={len(rs.ERROR_SWEEP_SCHEDULERS if mode == 'error_sweep' else rs.SCHEDULERS)}"
           + (f"   errors={rs.PREDICT_ERRORS}" if mode == "error_sweep"
              else f"   predict_error={rs.BASE_SIM['predict_error']}"))
 

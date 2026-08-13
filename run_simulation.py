@@ -678,7 +678,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
 
 def print_summary_table(test_name: str, metrics: dict, config: dict):
     tx_power      = metrics["tx_power"]
-    total_energy  = sum(tx_power)                                   # W·frame
+    total_energy  = sum(tx_power)                                   # W·time-slot
     average_power = total_energy / len(tx_power) if tx_power else 0.0  # W
 
     pids = sorted(metrics["per_id_req"].keys())
@@ -686,7 +686,9 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
     # Build per-id req lookup from config
     id_req = {p["id"]: p["success_rate"] for gen in config["packet_generators"] for p in gen["packets"]}
 
-    col_w = [6, 20, 16, 18, 18, 14, 18]
+    # Last column is widened to fit the "Energy (W·time-slot)" header (20 chars);
+    # a narrower width silently overflows and knocks the whole table out of line.
+    col_w = [6, 20, 16, 18, 18, 14, 22]
     header = (
         f"{'ID':<{col_w[0]}}"
         f"{'Undelivered':>{col_w[1]}}"
@@ -694,7 +696,7 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
         f"{'Success Ratio':>{col_w[3]}}"
         f"{'Success Req':>{col_w[4]}}"
         f"{'Avg Power (W)':>{col_w[5]}}"
-        f"{'Energy (W·frame)':>{col_w[6]}}"
+        f"{'Energy (W·time-slot)':>{col_w[6]}}"
     )
     sep = "-" * sum(col_w)
 
@@ -727,6 +729,8 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
 def print_comparison_table(all_results: list[tuple[str, dict]]):
     name_w = max(len(name) for name, _ in all_results) + 2
     col_w  = 16
+    # The energy column carries a 20-char header, so it gets its own width.
+    e_w    = 22
 
     header = (
         f"{'Test':<{name_w}}"
@@ -736,7 +740,7 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
         f"{'Transmissions':>{col_w}}"
         f"{'Met Criteria':>{col_w}}"
         f"{'Avg Pwr (W)':>{col_w}}"
-        f"{'Energy (W·frame)':>{col_w}}"
+        f"{'Energy (W·time-slot)':>{e_w}}"
     )
     sep = "-" * len(header)
 
@@ -749,7 +753,7 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
     for name, m in all_results:
         tx_power      = m["tx_power"]
         avg_power     = sum(tx_power) / len(tx_power) if tx_power else 0.0  # W
-        total_energy  = sum(tx_power)                                       # W·frame
+        total_energy  = sum(tx_power)                                       # W·time-slot
         total_undel   = sum(m["undelivered_per_id"].values())
         total_gen     = sum(m["generated_per_id"].values())
         total_dropped = sum(m["cumulative_dropped"][-1:] or [0])
@@ -770,7 +774,7 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
             f"{m['total_transmissions']:>{col_w}.2f}"
             f"{criteria:>{col_w}}"
             f"{avg_power:>{col_w}.2f}"
-            f"{total_energy:>{col_w}.2f}"
+            f"{total_energy:>{e_w}.2f}"
         )
 
     print(sep)
@@ -1021,10 +1025,10 @@ def _run_single_sweep(args: tuple) -> dict:
     Bypasses extract_metrics entirely — at 100k ticks this was the dominant
     cost of the sweep pipeline.
 
-    `total_energy` is sum(tx_power) over all frames, in units of W·frame.
-    Dimensionally equivalent to energy modulo the (unspecified) frame
-    duration in seconds — same constant for every scheduler, so comparisons
-    are unchanged."""
+    `total_energy` is sum(tx_power) over all transmitted time-slots, in units
+    of W·time-slot. Dimensionally equivalent to energy modulo the (unspecified)
+    time-slot duration in seconds — same constant for every scheduler, so
+    comparisons are unchanged."""
     test, run_id, seed = args
     config = make_config(test, seed=seed)
     cfg_file = f"/tmp/sim_config_{os.getpid()}_{run_id}.json"
@@ -1195,7 +1199,7 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
 PANEL_METRICS = [
     ("sched_ratio",    "Schedulability ratio\n(met / total)",           (-0.05, 1.05)),
     ("sched_ratio_mk", "Windowed schedulability\n((m,k), met / total)", (-0.05, 1.05)),
-    ("total_energy",   "Energy (W·frame)",                              None),
+    ("total_energy",   "Energy (W·time-slot)",                          None),
 ]
 
 def _draw_scenario_panel(axes, scen_name: str, sch_results: dict):
@@ -1236,14 +1240,21 @@ def _safe_filename(s: str) -> str:
     """Make a scenario label safe to use as a filename component."""
     return s.replace("[", "").replace("]", "").replace(",", "_").replace("=", "")
 
+def _window_k_suffix() -> str:
+    """" (m,k window k=N)" for figures that actually draw the windowed row,
+    empty otherwise — real_life_experiment/run.py drops that row, and naming a
+    k the figure never uses only invites the reader to look for it."""
+    if not any(key == "sched_ratio_mk" for key, _l, _y in PANEL_METRICS):
+        return ""
+    return f" (m,k window k={BASE_SIM.get('window_k', 100)})"
+
 def plot_schedulability(results: dict):
     scen_names = list(results.keys())
     n_scen     = len(scen_names)
     os.makedirs(TESTS_DIR, exist_ok=True)
 
     n_rows = len(PANEL_METRICS)
-    title  = (f"Schedulability and Energy vs Utilization "
-              f"(m,k window k={BASE_SIM.get('window_k', 100)})")
+    title  = f"Schedulability and Energy vs Utilization{_window_k_suffix()}"
 
     # Combined figure: one column per scenario, one row per PANEL_METRICS entry.
     fig, axes = plt.subplots(n_rows, n_scen, figsize=(6 * n_scen, 4.2 * n_rows),
@@ -1439,7 +1450,7 @@ def plot_error_sweep(results: dict):
                for scen in scen_names}
 
     n_rows = len(PANEL_METRICS)
-    title  = (f"Prediction-Error Sweep (m,k window k={BASE_SIM.get('window_k', 100)})")
+    title  = f"Prediction-Error Sweep{_window_k_suffix()}"
 
     fig, axes = plt.subplots(n_rows, n_scen, figsize=(6 * n_scen, 4.2 * n_rows),
                              sharex="col")
