@@ -95,7 +95,7 @@ BufferPacket buffer(system_tick);
 // Configure packet generators
 std::vector<fixed_rate_packet_t> packets;
 packets.push_back(fixed_rate_packet_t(5U, 2U, 0.9, 1U, 5U, 0U));
-// Parameters: period, frames, success_rate, id, deadline, offset
+// Parameters: period, frames, reliability, id, deadline, offset
 
 FixedRate_PacketGen packet_gen(system_tick, packets, buffer.buffer_packet, spawn_log);
 
@@ -141,7 +141,7 @@ This runs the default simulation from `main.cpp` and generates:
 Fixed-rate packets are configured with:
 - **Period**: Frames between packet arrivals
 - **Frames**: Number of frames required to transmit the packet
-- **Success Rate**: Required probability of successful reception (0.0-1.0)
+- **Reliability**: Required probability of successful reception (0.0-1.0)
 - **ID**: Unique identifier for the packet flow
 - **Deadline**: Relative deadline in frames
 - **Offset**: Initial delay before first packet
@@ -216,7 +216,7 @@ Sigmoid channel supports:
     "packet_id_count": 0,
     "deadline": 5,
     "frames": 2,
-    "success_rate_req": 0.9,
+    "reliability_req": 0.9,
     "generator_type": "FixedRate"
   }
 ]

@@ -49,7 +49,7 @@ scheduled_frame_t CHARM_scheduler::do_schedule_frame(void)
 
             /* Check if the prob is high enough to remove this frame from the buffer */
             if (accumulated_prob[key] >=
-                std::pow(lowest_it->success_rate_req, 1.0 / lowest_it->frames))
+                std::pow(lowest_it->reliability_req, 1.0 / lowest_it->frames))
             {
                 scheduled_frame.remove_from_buffer = true;
                 accumulated_prob.erase(key);

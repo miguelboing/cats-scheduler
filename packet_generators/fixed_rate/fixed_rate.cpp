@@ -39,7 +39,7 @@ std::vector<periodic_task_t> FixedRate_PacketGen::get_periodic_tasks() const
             p.original_packet.id,
             p.fixed_rate,
             p.original_packet.frames,
-            p.original_packet.success_rate_req
+            p.original_packet.reliability_req
         });
     }
     return out;

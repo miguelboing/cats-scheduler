@@ -22,7 +22,7 @@ struct periodic_task_t
     unsigned int id;
     unsigned int period;            /* T_i: inter-arrival in ticks */
     unsigned int frames;            /* C_i: frames per release */
-    double       success_rate_req;  /* SR_i: required reception probability */
+    double       reliability_req;  /* RR_i: required reception probability */
 };
 
 /* This class keeps controls of the arriving packets, transmited packets and missed deadlines */
@@ -75,7 +75,7 @@ inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
             {"packet_id_count", packet.id_count},
             {"deadline", packet.deadline},
             {"frames", packet.frames},
-            {"success_rate_req", packet.success_rate_req},
+            {"reliability_req", packet.reliability_req},
             {"is_periodic", packet.is_periodic},
             {"period", packet.period},
             {"generator_type", this->get_name()}  /* Track which generator spawned it */

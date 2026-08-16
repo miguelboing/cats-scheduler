@@ -57,7 +57,7 @@ double CATS_scheduler::compute_demand_slots(double p) const
     for (const auto& t : this->periodic_tasks)
     {
         if (t.period == 0U) continue;
-        const double k = retx_count_required(p, std::pow(t.success_rate_req,
+        const double k = retx_count_required(p, std::pow(t.reliability_req,
                                                          1.0 / t.frames));
         if (std::isinf(k)) return std::numeric_limits<double>::infinity();
         /* releases of task i within H: ceil(H / T_i) */
@@ -81,7 +81,7 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
 
     /* Drop unfeasible packets and detect urgent ones in the same pass.
        Per-frame slot cost is the number of retransmissions needed to hit
-       the per-frame SR target (pow(SR, 1/frames)) at the best channel
+       the per-frame RR target (pow(RR, 1/frames)) at the best channel
        probability we'll actually allow (transmission_prob[max_power_idx]) —
        the cap is a hard energy limit, so feasibility past it is moot.
        Pre-prediction (p_best == 0) we fall back to 1 slot/frame so packets
@@ -94,9 +94,9 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
         if (pkt.deadline <= *(this->system_tick)) continue; /* already expired, check_deadlines handles it */
         const double ticks_available  = static_cast<double>(pkt.deadline - *(this->system_tick));
         const unsigned int remaining_frames = pkt.frames - pkt.frame_count;
-        const double sr_per_frame = std::pow(pkt.success_rate_req, 1.0 / pkt.frames);
+        const double rr_per_frame = std::pow(pkt.reliability_req, 1.0 / pkt.frames);
         const double slots_per_frame = (p_best <= 0.0) ? 1.0
-                                                       : retx_count_required(p_best, sr_per_frame);
+                                                       : retx_count_required(p_best, rr_per_frame);
         const double needed_slots = static_cast<double>(remaining_frames) * slots_per_frame;
         if (std::isinf(needed_slots) || ticks_available < needed_slots)
         {
@@ -136,7 +136,7 @@ scheduled_frame_t CATS_scheduler::do_schedule_frame(void)
         {
             const unsigned int power_levels[3] = {1, 10, 25};
             uint64_t key     = packet_key(lowest_it->id, lowest_it->id_count);
-            double req       = std::pow(lowest_it->success_rate_req,
+            double req       = std::pow(lowest_it->reliability_req,
                                         1.0 / lowest_it->frames);
 
             /* Get or initialise accumulated probability for this packet instance */

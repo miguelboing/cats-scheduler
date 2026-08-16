@@ -32,8 +32,8 @@
 # Reproducible run (same SEED → bit-identical output PNGs):
 #     sbatch --export=SEED=42,ALL run_aire.sh <run_name>
 # Override the weakly-hard (m,k) window used by the sched_ratio_mk curve
-# (default 100, which makes m/k reproduce the 2-decimal success_rate exactly;
-# must be >= 10 for the 0.9 success-rate tasks — see CLAUDE.md):
+# (default 100, which makes m/k reproduce the 2-decimal reliability exactly;
+# must be >= 10 for the 0.9 reliability tasks — see CLAUDE.md):
 #     sbatch --export=WINDOW_K=50,ALL run_aire.sh <run_name>
 
 set -euo pipefail

@@ -8,7 +8,7 @@ outcomes recorded in frame_success.csv.
 
 Three scenarios (varying task count `n`), U swept over [0.1 .. 1.0], N runs
 per (scenario, U, scheduler) point. Output PNGs land under
-real_life_experiment/.
+hf_experiment/.
 
 Two modes, mirroring run_simulation.py:
   sweep        — one pass at BASE_SIM["predict_error"], one curve per scheduler.
@@ -16,7 +16,7 @@ Two modes, mirroring run_simulation.py:
                  so predictor-sensitive schedulers get one curve per level.
 
 Usage:
-  SEED=42 python real_life_experiment/run.py [n_runs] [sweep|error_sweep]
+  SEED=42 python hf_experiment/run.py [n_runs] [sweep|error_sweep]
 """
 
 import os
@@ -76,7 +76,7 @@ rs.BASE_CHANNELS = [{
     "frequency": FREQ_HZ,
     # Resolved relative to SCRIPT_DIR (repo root) because the binary runs
     # with cwd=SCRIPT_DIR.
-    "csv_path":  "real_life_experiment/frame_success.csv",
+    "csv_path":  "hf_experiment/frame_success.csv",
 }]
 
 # Fixed-power baselines run at both 10 W and 25 W — the two upper power levels
@@ -124,7 +124,7 @@ rs.SWEEP_SCENARIOS = [
 
 rs.U_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
-# Plots land in real_life_experiment/ instead of tests/.
+# Plots land in hf_experiment/ instead of tests/.
 rs.TESTS_DIR = HERE
 
 

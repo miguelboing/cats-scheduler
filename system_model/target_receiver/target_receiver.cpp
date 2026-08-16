@@ -30,7 +30,7 @@ bool TargetReceiver::recv_frame(received_frame_t recv_frame)
             {"deadline", recv_frame.packet.deadline},
             {"frames", recv_frame.packet.frames},
             {"frame_count", recv_frame.packet.frame_count},
-            {"success_rate_req", recv_frame.packet.success_rate_req},
+            {"reliability_req", recv_frame.packet.reliability_req},
             {"transmission_power", recv_frame.transmission_power},
             {"frequency", recv_frame.frequency},
             {"success_prob", recv_frame.success_prob},

@@ -64,7 +64,7 @@ def uunifast_packets(n: int, U: float, c_min: int, c_max: int,
             "id":                i + 1,
             "relative_deadline": D,
             "frames":            C,
-            "success_rate":      round(random.uniform(rr_min, rr_max), 2),
+            "reliability":      round(random.uniform(rr_min, rr_max), 2),
             "period":            D,
             "phase":             0,
         })
@@ -138,14 +138,14 @@ BASE_SIM = {
 # k -> inf recovers the whole-run average (`sched_ratio`), while the smallest
 # usable k tolerates no bursts at all. Two hard constraints:
 #
-#   k >= 1 / (1 - success_rate_req)   or m = ceil(req*k) == k and the window
+#   k >= 1 / (1 - reliability_req)   or m = ceil(req*k) == k and the window
 #                                     silently degenerates to zero-miss. At
 #                                     rr_max = 0.90 that floor is k = 10.
 #   k <= instances per id             or the id has no complete window and is
 #                                     scored vacuously met (see warn_vacuous).
 #                                     This is the binding constraint at k=100.
 #
-# 100 is chosen to match the 2-decimal `success_rate` draws in make_test_set:
+# 100 is chosen to match the 2-decimal `reliability` draws in make_test_set:
 # m = ceil(req*100) is exactly req*100, so m/k reproduces the requirement with
 # no rounding and every task is compared against the rate it actually asked
 # for. Deriving a per-task k from the fraction instead (0.50 -> 1/2,
@@ -165,7 +165,7 @@ def scenario_label(n: int, c_min: int, c_max: int,
         parts.append(f"U={int(round(U * 100))}")
     parts.append(f"n={n}")
     parts.append(f"L=[{c_min},{c_max}]")
-    # RR = reliability requirement (the per-packet `success_rate` field).
+    # RR = reliability requirement (the per-packet `reliability` field).
     parts.append(f"RR=[{rr_min},{rr_max}]")
     return ",".join(parts)
 
@@ -262,7 +262,7 @@ class Packet:
     deadline: int
     frames: int
     frame_count: int
-    success_rate_req: float
+    reliability_req: float
 
 @dataclass
 class Transmission:
@@ -270,7 +270,7 @@ class Transmission:
     tx_power: int
     frequency: int
     probability: float
-    success_rate_req: float
+    reliability_req: float
     received: bool
 
 @dataclass
@@ -308,7 +308,7 @@ def parse_packet(d: dict) -> Packet:
         deadline         = d["deadline"],
         frames           = d["frames"],
         frame_count      = d.get("frame_count", 0),
-        success_rate_req = d["success_rate_req"]
+        reliability_req = d["reliability_req"]
     )
 
 def parse_frame(d: dict) -> Frame:
@@ -320,7 +320,7 @@ def parse_frame(d: dict) -> Frame:
             tx_power         = t["tx_power"],
             frequency        = t["frequency"],
             probability      = t["probability"],
-            success_rate_req = t["success_rate_req"],
+            reliability_req = t["reliability_req"],
             received         = t["received"]
         )
 
@@ -379,7 +379,7 @@ def print_test_summary(test: dict):
     for gen in cfg["packet_generators"]:
         for p in gen["packets"]:
             print(f"     id={p['id']}  period={p['period']}  deadline={p['relative_deadline']}"
-                  f"  frames={p['frames']}  success_rate={p['success_rate']}  phase={p['phase']}")
+                  f"  frames={p['frames']}  reliability={p['reliability']}  phase={p['phase']}")
 
 def run_test(test: dict, seed: Optional[int] = None) -> tuple[list["Frame"], dict]:
     config = make_config(test, seed=seed)
@@ -433,7 +433,7 @@ def extract_metrics(frames: list[Frame], config: dict) -> dict:
     id_received    = defaultdict(int)
     for gen in config["packet_generators"]:
         for p in gen["packets"]:
-            per_id_req[p["id"]] = p["success_rate"]
+            per_id_req[p["id"]] = p["reliability"]
 
     for f in frames:
         if f.transmission:
@@ -685,7 +685,7 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
     pids = sorted(metrics["per_id_req"].keys())
 
     # Build per-id req lookup from config
-    id_req = {p["id"]: p["success_rate"] for gen in config["packet_generators"] for p in gen["packets"]}
+    id_req = {p["id"]: p["reliability"] for gen in config["packet_generators"] for p in gen["packets"]}
 
     # Last column is widened to fit the "Energy (W·time-slot)" header (20 chars);
     # a narrower width silently overflows and knocks the whole table out of line.
@@ -708,15 +708,15 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
     print(sep)
 
     for pid in pids:
-        undelivered   = metrics["undelivered_per_id"].get(pid, 0)
-        generated     = metrics["generated_per_id"].get(pid, 0)
-        success_ratio = (1 - undelivered / generated) if generated > 0 else 0.0
-        req           = id_req.get(pid, float("nan"))
+        undelivered = metrics["undelivered_per_id"].get(pid, 0)
+        generated   = metrics["generated_per_id"].get(pid, 0)
+        reliability = (1 - undelivered / generated) if generated > 0 else 0.0
+        req         = id_req.get(pid, float("nan"))
         print(
             f"{pid:<{col_w[0]}}"
             f"{undelivered:>{col_w[1]}.2f}"
             f"{generated:>{col_w[2]}.2f}"
-            f"{success_ratio:>{col_w[3]}.2f}"
+            f"{reliability:>{col_w[3]}.2f}"
             f"{req:>{col_w[4]}.2f}"
             f"{average_power:>{col_w[5]}.2f}"
             f"{total_energy:>{col_w[6]}.2f}"
@@ -806,16 +806,16 @@ def print_reliability_criteria_table(all_results: list[tuple[str, dict]]):
     for name, m in all_results:
         pids = sorted(m["per_id_req"].keys())
         for pid in pids:
-            generated     = m["generated_per_id"].get(pid, 0)
-            undelivered   = m["undelivered_per_id"].get(pid, 0)
-            success_ratio = (1 - undelivered / generated) if generated > 0 else 0.0
-            req           = m["per_id_req"][pid]
-            delta         = success_ratio - req
-            met           = "YES" if success_ratio >= req else "NO"
+            generated   = m["generated_per_id"].get(pid, 0)
+            undelivered = m["undelivered_per_id"].get(pid, 0)
+            reliability = (1 - undelivered / generated) if generated > 0 else 0.0
+            req         = m["per_id_req"][pid]
+            delta       = reliability - req
+            met         = "YES" if reliability >= req else "NO"
             print(
                 f"{name:<{name_w}}"
                 f"{pid:<{id_w}}"
-                f"{success_ratio:>{col_w}.2f}"
+                f"{reliability:>{col_w}.2f}"
                 f"{req:>{col_w}.2f}"
                 f"{delta:>+{col_w}.2f}"
                 f"{met:>{col_w}}"
@@ -891,7 +891,7 @@ def window_m(req: float, k: int) -> int:
     """Smallest m with m/k >= req — the (m,k)-firm threshold for one task.
 
     Mirrors the C++ computation in main.cpp exactly, epsilon included. The
-    nudge matters: `success_rate` is drawn as a 2-decimal float, and a bare
+    nudge matters: `reliability` is drawn as a 2-decimal float, and a bare
     ceil overshoots by one wherever that float rounds up. math.ceil(0.55*100)
     is 56 and math.ceil(0.56*100) is 57, both inside the sweep's RR band,
     which would hold those tasks to a stricter rate than they requested.
@@ -923,7 +923,7 @@ def extract_sweep_metrics(summary: dict) -> dict:
     Three views of the same run, from most to least forgiving:
 
     - `sched_ratio`     — fraction of ids whose whole-run delivery rate meets
-                          success_rate_req. Insensitive to *when* misses land:
+                          reliability_req. Insensitive to *when* misses land:
                           an early burst can be averaged away by a long clean
                           tail.
     - `sched_ratio_mk`  — fraction of ids meeting the weakly-hard (m,k)-firm
@@ -946,7 +946,7 @@ def extract_sweep_metrics(summary: dict) -> dict:
     tot_windows = tot_violations = 0
     for entry in per_id:
         gen = entry["generated"]
-        if gen > 0 and 1 - entry["undelivered"] / gen >= entry["success_rate_req"]:
+        if gen > 0 and 1 - entry["undelivered"] / gen >= entry["reliability_req"]:
             met += 1
 
         windows    = entry.get("windows_total", 0)
@@ -1243,7 +1243,7 @@ def _safe_filename(s: str) -> str:
 
 def _window_k_suffix() -> str:
     """" (m,k window k=N)" for figures that actually draw the windowed row,
-    empty otherwise — real_life_experiment/run.py drops that row, and naming a
+    empty otherwise — hf_experiment/run.py drops that row, and naming a
     k the figure never uses only invites the reader to look for it."""
     if not any(key == "sched_ratio_mk" for key, _l, _y in PANEL_METRICS):
         return ""

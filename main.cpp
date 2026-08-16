@@ -75,7 +75,7 @@ int main(int argc, char* argv[])
                 packets.push_back(fixed_rate_packet_t(
                     p["relative_deadline"],
                     p["frames"],
-                    p["success_rate"],
+                    p["reliability"],
                     p["id"],
                     p["period"],
                     p["phase"]
@@ -231,7 +231,7 @@ int main(int argc, char* argv[])
                     {"deadline",         packet.deadline},
                     {"frames",           packet.frames},
                     {"frame_count",      packet.frame_count},
-                    {"success_rate_req", packet.success_rate_req}
+                    {"reliability_req", packet.reliability_req}
                 });
             }
 
@@ -242,7 +242,7 @@ int main(int argc, char* argv[])
                           << ", id_count: "     << packet.id_count
                           << ", deadline: "     << packet.deadline
                           << ", frames: "       << packet.frames
-                          << ", success_rate: " << packet.success_rate_req << ") ";
+                          << ", reliability: " << packet.reliability_req << ") ";
                 std::cout << std::endl;
             }
 
@@ -283,7 +283,7 @@ int main(int argc, char* argv[])
                                  << ", deadline: "         << transmitted_frame.packet.deadline
                                  << ", frames: "           << transmitted_frame.packet.frames
                                  << ", frame_count: "      << transmitted_frame.packet.frame_count
-                                 << ", success_rate: "     << transmitted_frame.packet.success_rate_req << ") ";
+                                 << ", reliability: "     << transmitted_frame.packet.reliability_req << ") ";
                     std::cout    << std::endl;
                 }
 
@@ -313,7 +313,7 @@ int main(int argc, char* argv[])
                     {
                         std::cout   << "TX Power : "                   << recv_frame.transmission_power
                                     << "\nProbability for the frame: " << recv_frame.success_prob
-                                    << " and required probability: "   << recv_frame.packet.success_rate_req;
+                                    << " and required probability: "   << recv_frame.packet.reliability_req;
                         std::cout << std::endl;
                         std::cout << "Frame successfully received by the target? " << received << std::endl;
 
@@ -324,12 +324,12 @@ int main(int argc, char* argv[])
                                 {"deadline",         transmitted_frame.packet.deadline},
                                 {"frames",           transmitted_frame.packet.frames},
                                 {"frame_count",      transmitted_frame.packet.frame_count},
-                                {"success_rate_req", transmitted_frame.packet.success_rate_req}
+                                {"reliability_req", transmitted_frame.packet.reliability_req}
                             }},
                             {"tx_power",         recv_frame.transmission_power},
                             {"frequency",        recv_frame.frequency},
                             {"probability",      recv_frame.success_prob},
-                            {"success_rate_req", recv_frame.packet.success_rate_req},
+                            {"reliability_req", recv_frame.packet.reliability_req},
                             {"received",         received}
                         };
                     }
@@ -401,7 +401,7 @@ int main(int argc, char* argv[])
                           << " ID Count: " << missed.id_count
                           << " Deadline: " << missed.deadline
                           << " Frames: "   << missed.frames
-                          << " SR Req: "   << missed.success_rate_req
+                          << " RR Req: "   << missed.reliability_req
                           << std::endl;
 
                 frame_entry["missed_packets"].push_back({
@@ -410,7 +410,7 @@ int main(int argc, char* argv[])
                     {"deadline",         missed.deadline},
                     {"frames",           missed.frames},
                     {"frame_count",      missed.frame_count},
-                    {"success_rate_req", missed.success_rate_req}
+                    {"reliability_req", missed.reliability_req}
                 });
             }
         }
@@ -432,7 +432,7 @@ int main(int argc, char* argv[])
                           << " ID Count: " << dropped.id_count
                           << " Deadline: " << dropped.deadline
                           << " Frames: "   << dropped.frames
-                          << " SR Req: "   << dropped.success_rate_req
+                          << " RR Req: "   << dropped.reliability_req
                           << std::endl;
 
                 frame_entry["dropped_packets"].push_back({
@@ -441,7 +441,7 @@ int main(int argc, char* argv[])
                     {"deadline",         dropped.deadline},
                     {"frames",           dropped.frames},
                     {"frame_count",      dropped.frame_count},
-                    {"success_rate_req", dropped.success_rate_req}
+                    {"reliability_req", dropped.reliability_req}
                 });
             }
         }
@@ -506,7 +506,7 @@ int main(int argc, char* argv[])
             for (const auto& p : gen["packets"])
             {
                 int pid = p["id"];
-                per_id_req[pid]         = p["success_rate"];
+                per_id_req[pid]         = p["reliability"];
                 per_id_generated[pid]   = 0;
                 per_id_undelivered[pid] = 0;
                 per_id_delivered[pid]   = std::vector<char>();
@@ -531,12 +531,12 @@ int main(int argc, char* argv[])
 
         /* Weakly-hard / (m,k)-firm window. An id satisfies its requirement if
            every window of `window_k` consecutive instances delivers at least
-           m = ceil(success_rate_req * window_k) of them. Sliding (not
+           m = ceil(reliability_req * window_k) of them. Sliding (not
            tumbling) so a burst straddling a boundary can't be masked. Note
-           window_k must be >= 1/(1 - success_rate_req) or m == window_k and
+           window_k must be >= 1/(1 - reliability_req) or m == window_k and
            the constraint degenerates to zero-miss; window_m is emitted so the
            harness can flag that. The default k = 100 pairs with the harness's
-           2-decimal success_rate draws so that m/k reproduces the requirement
+           2-decimal reliability draws so that m/k reproduces the requirement
            exactly. */
         const unsigned int window_k = config["simulation"].value("window_k", 100U);
 
@@ -549,7 +549,7 @@ int main(int argc, char* argv[])
             const int pid                   = kv.first;
             const std::vector<char>& seq    = per_id_delivered[pid];
             /* Smallest m with m/k >= req. The 1e-9 nudge is load-bearing:
-               success_rate_req arrives as a 2-decimal double, and a bare
+               reliability_req arrives as a 2-decimal double, and a bare
                ceil() overshoots by one wherever that double rounds up --
                0.55*100 and 0.56*100 both do, silently making the constraint
                stricter than the task asked for. The epsilon is far below the
@@ -589,7 +589,7 @@ int main(int argc, char* argv[])
 
             per_id.push_back({
                 {"id",                     pid},
-                {"success_rate_req",       kv.second},
+                {"reliability_req",       kv.second},
                 {"generated",              per_id_generated[pid]},
                 {"undelivered",            per_id_undelivered[pid]},
                 {"max_consecutive_misses", max_burst},

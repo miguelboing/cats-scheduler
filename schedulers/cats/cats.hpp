@@ -55,7 +55,7 @@ public:
     static double retx_count_required(double p, double sr_req);
 
     /* Demand in slots within the horizon H, given a per-frame success
-       probability p. Demand_i = ceil(H/T_i) * C_i * retx_count_required(p, SR_i).
+       probability p. Demand_i = ceil(H/T_i) * C_i * retx_count_required(p, RR_i).
        Returns +inf if any task is infeasible at p. */
     double compute_demand_slots(double p) const;
 

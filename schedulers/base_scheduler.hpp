@@ -86,7 +86,7 @@ inline scheduled_frame_t BaseScheduler::schedule_frame(void)
                 {"deadline",          scheduled_frame.packet->deadline},
                 {"frames",            scheduled_frame.packet->frames},
                 {"frame_count",       scheduled_frame.packet->frame_count},
-                {"success_rate_req",  scheduled_frame.packet->success_rate_req}
+                {"reliability_req",  scheduled_frame.packet->reliability_req}
             };
             break;
 
