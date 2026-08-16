@@ -6,6 +6,7 @@ import hashlib
 import math
 import multiprocessing as mp
 import random
+import re
 import subprocess
 import tempfile
 import time
@@ -15,8 +16,108 @@ from typing import Optional
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from matplotlib.lines import Line2D
 
 TESTS_DIR = "tests"
+
+# ── Figure style and paper symbols ────────────────────────────────────────────
+#
+# Every symbol below is written as matplotlib *mathtext* (`$...$`), which is
+# rendered by matplotlib itself — no TeX installation required, so the harness
+# still draws on the AIRE cluster. Set MPL_USETEX=1 to route the same strings
+# through a real LaTeX install instead (slower); the markup is valid in both,
+# so nothing else changes. That path needs latex + dvipng on PATH *and* the
+# cm-super fonts — matplotlib's usetex preamble pulls in `type1ec.sty`, and
+# without it (as on this machine) every savefig dies inside latex.
+#
+# The symbols are the paper's, and these constants are the single place they
+# are spelled — never inline `$\theta_n$` at a call site.
+SYM_RR   = r"$\theta_n$"                # reliability requirement of task n
+SYM_N    = r"$N$"                       # number of tasks in the set
+SYM_L    = r"$L$"                       # packet length, in frames
+SYM_U    = r"$U$"                       # total utilization
+SYM_M    = r"$m$"                       # deliveries required per window
+SYM_KWIN = r"$K_{\mathrm{win}}$"        # window length, in instances
+SYM_ERR  = r"$\varepsilon$"             # predictor error level
+SYM_PFP  = r"$P_{\mathrm{FP}}$"         # transmit power of a fixed-power baseline
+SYM_PCH  = r"$P_{\mathrm{CH}}$"         # transmit power of a CHARM-family scheduler
+
+plt.rcParams.update({
+    "font.family":       "serif",
+    # Latin Modern Roman is the LaTeX body face (texlive-lm on Fedora,
+    # lmodern on Debian). If it isn't installed the list falls through to
+    # STIX and then DejaVu, so figures still draw — just not in LM. A
+    # machine that *has* the font but was first run without it needs its
+    # matplotlib font cache cleared once: rm ~/.cache/matplotlib/fontlist-*.json
+    "font.serif":        ["Latin Modern Roman", "STIXGeneral", "DejaVu Serif"],
+    # Computer Modern for math: Latin Modern is a redraw of CM, so the two
+    # match closely, and matplotlib cannot load the OTF Latin Modern Math.
+    "mathtext.fontset":  "cm",
+    # Sized for a figure that lands in a paper column at ~half width — the
+    # 10 pt matplotlib defaults shrink to unreadable there.
+    "axes.titlesize":    14,
+    "axes.labelsize":    13,
+    "xtick.labelsize":   12,
+    "ytick.labelsize":   12,
+    "legend.fontsize":   12,
+    "figure.titlesize":  15,
+})
+if os.environ.get("MPL_USETEX"):
+    plt.rcParams.update({"text.usetex": True,
+                         "text.latex.preamble": r"\usepackage{amsmath}"})
+
+# Formats every figure is written in, overridable with PLOT_FORMATS (comma
+# separated, e.g. "pdf" or "png,svg"). PDF is the one to put in the paper: it
+# is vector, so it stays sharp at any zoom, while the PNG is only a 150-dpi
+# raster for quick viewing. Both are written from the same figure object, so
+# they can't disagree.
+PLOT_FORMATS = [f.strip().lstrip(".") for f in
+                os.environ.get("PLOT_FORMATS", "png,pdf").split(",") if f.strip()]
+
+# Type 42 (TrueType) rather than matplotlib's default Type 3: the text stays
+# real text — selectable, searchable, and re-usable by the typesetter — and
+# IEEE/ACM submission checks reject Type 3 outright.
+plt.rcParams.update({"pdf.fonttype": 42, "ps.fonttype": 42})
+
+# Per-tick diagnostic figures carry one point per frame, so at the sweep's
+# 250k-frame duration a fully vector PDF would embed millions of segments —
+# tens of MB that no viewer will pan smoothly. Above this many points the data
+# artists are rasterized at save dpi while every label, axis and legend stays
+# vector, which is what the zoom actually needs to stay sharp.
+RASTERIZE_ABOVE = 20_000
+
+def rasterize_dense_artists(fig, n_points: int) -> None:
+    """Rasterize the plotted data of `fig` (not its text) when a series is
+    long enough for vector output to become unwieldy. No-op below the
+    threshold, and no-op for raster formats, which look the same either way."""
+    if n_points <= RASTERIZE_ABOVE:
+        return
+    for ax in fig.axes:
+        for artist in list(ax.lines) + list(ax.collections) + list(ax.patches):
+            artist.set_rasterized(True)
+
+def save_figure(path_base: str) -> str:
+    """Write the current figure once per PLOT_FORMATS entry and return the
+    paths for logging. `path_base` carries no extension — this owns it, so a
+    new format needs no change at the call sites. dpi applies to the raster
+    formats and to any artist rasterize_dense_artists() marked; the vector
+    ones ignore it."""
+    outs = []
+    for fmt in PLOT_FORMATS:
+        out = f"{path_base}.{fmt}"
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        outs.append(out)
+    return ", ".join(outs)
+
+def tex_safe(s: str) -> str:
+    """Escape the characters a real LaTeX pass chokes on. Scheduler labels and
+    test names carry underscores (`CHEDF_25W`), which mathtext takes literally
+    but LaTeX reads as a subscript, so this is a no-op unless MPL_USETEX is on.
+    Only ever call it on plain strings — running it over one that already
+    contains a `$...$` symbol would escape the math too."""
+    if not plt.rcParams.get("text.usetex"):
+        return s
+    return re.sub(r"([_&#%$])", r"\\\1", s)
 
 # Master seed for reproducible runs. Read once at import time from the SEED
 # env var. When None, behavior is non-deterministic (clock-based RNG in C++,
@@ -158,8 +259,11 @@ if os.environ.get("WINDOW_K"):
 
 def scenario_label(n: int, c_min: int, c_max: int,
                    rr_min: float, rr_max: float, U: Optional[float] = None) -> str:
-    """Render a scenario's parameters as a compact label used in plot titles
-    and filenames. Always derived from the actual values so it can't drift."""
+    """Render a scenario's parameters as a compact label. This string keys the
+    results dicts, names the test directories and names the output PNGs, so it
+    stays plain ASCII — `scenario_title()` is the display form that swaps in
+    the paper's symbols. Always derived from the actual values so it can't
+    drift."""
     parts = []
     if U is not None:
         parts.append(f"U={int(round(U * 100))}")
@@ -168,6 +272,50 @@ def scenario_label(n: int, c_min: int, c_max: int,
     # RR = reliability requirement (the per-packet `reliability` field).
     parts.append(f"RR=[{rr_min},{rr_max}]")
     return ",".join(parts)
+
+# Plain token in a scenario label -> the paper symbol it stands for.
+_SCEN_SYMBOLS = {"U": SYM_U, "n": SYM_N, "L": SYM_L, "RR": SYM_RR}
+
+# Which power symbol a scheduler's transmit power is written with: the paper
+# separates the fixed-power baselines (RM, EDF) from the CHARM-family ones
+# (CHARM, CHEDF), which spend their power under an accumulated-probability
+# retransmission rule. Keyed on the label's base name; a roster entry with no
+# entry here falls back to P_FP, so a new fixed-power baseline needs nothing
+# added but a new family does.
+_POWER_SYMBOLS = {"RM": SYM_PFP, "EDF": SYM_PFP, "CHARM": SYM_PCH, "CHEDF": SYM_PCH}
+
+def scheduler_title(label: str, *extra: str) -> str:
+    """Display form of a roster label: `CHEDF_10W` reads as
+    `CHEDF (P_CH = 10 W)` — the scheduler keeps its name and the parameters
+    move into a parenthesis, the way the paper writes them. Any `extra` parts
+    join that same parenthesis, so the error sweep gets
+    `CHEDF (P_CH = 10 W, ε = 0.15)` rather than two bracketed groups.
+
+    Display only. The raw label keys the results dicts and names the
+    `<scheduler>_scheduled_packets.json` logs, so it must not be prettified at
+    the source. A label with no `_<n>W` suffix (CATS, which picks its own
+    power) passes through as just its name."""
+    m     = re.fullmatch(r"(.+?)_(\d+)W", label)
+    base  = m.group(1) if m else label
+    parts = [f"{_POWER_SYMBOLS.get(base, SYM_PFP)} = {m.group(2)} W"] if m else []
+    parts.extend(extra)
+    return tex_safe(base) + (f" ({', '.join(parts)})" if parts else "")
+
+def scenario_title(label: str) -> str:
+    """Display form of a scenario label: paper symbols in mathtext, and a
+    space after each separating comma. Applied only at draw time — the label
+    itself has to stay filename-safe. Rewrites `U=`/`n=`/`L=`/`RR=` only where
+    they start a field, so the commas inside `[1,3]` are left alone.
+
+    A test name carries its roster label after an underscore
+    (`U=10,n=2,...,RR=[0.5,0.9]_CHEDF_25W`); that tail is split off and run
+    through `scheduler_title()`. Nothing else in a scenario label contains an
+    underscore, so the split is unambiguous."""
+    scen, _sep, sched = label.partition("_")
+    out = re.sub(r"(^|,)(U|n|L|RR)=",
+                 lambda m: ("" if not m.group(1) else ", ") + _SCEN_SYMBOLS[m.group(2)] + "=",
+                 tex_safe(scen))
+    return f"{out} — {scheduler_title(sched)}" if sched else out
 
 # Each scenario: (U, n, c_min, c_max, rr_min, rr_max)
 SCENARIOS = [
@@ -539,7 +687,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
             ax3.plot(m["per_id_ticks"][pid], m["per_id_success"][pid], color=color, linewidth=1, label=f"id={pid}")
         else:
             ax3.scatter([], [], color=color, label=f"id={pid} (never scheduled)")
-        ax3.axhline(y=m["per_id_req"][pid], color=color, linestyle="--", linewidth=0.8, label=f"RR id={pid} ({m['per_id_req'][pid]})")
+        ax3.axhline(y=m["per_id_req"][pid], color=color, linestyle="--", linewidth=0.8, label=f"{SYM_RR} id={pid} ({m['per_id_req'][pid]})")
     ax3.set_ylabel("Reliability")
     ax3.set_xlabel("Tick")
     ax3.set_title("Cumulative TX Reliability per Packet")
@@ -595,10 +743,16 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax6.legend()
     ax6.grid(True, alpha=0.3)
 
-    plt.suptitle(f"{scheduler_type} — {test_name}", fontsize=13)
+    # The test name ends in the roster label (richer than the bare type, which
+    # carries no power), so scheduler_type is only the fallback for a name
+    # that has no such suffix.
+    title = scenario_title(test_name)
+    if "_" not in test_name:
+        title = f"{scheduler_title(scheduler_type)} — {title}"
+    plt.suptitle(title, fontsize=13)
     os.makedirs(TESTS_DIR, exist_ok=True)
-    out = os.path.join(TESTS_DIR, f"results_{test_name}.png")
-    plt.savefig(out, dpi=150, bbox_inches="tight")
+    rasterize_dense_artists(fig, len(ticks))
+    out = save_figure(os.path.join(TESTS_DIR, f"results_{test_name}"))
     plt.close()
     print(f"Plot saved to {out}")
 
@@ -608,13 +762,24 @@ def plot_comparison(results: list[tuple[str, dict]]):
     colors = plt.cm.tab10.colors
     n      = len(results)
 
+    # Tests being compared usually differ only in the scheduler, and repeating
+    # the whole scenario in four legends is what made them unreadable. When
+    # every name shares a scenario, the legends carry just the scheduler and
+    # the scenario moves to the suptitle; otherwise each legend keeps its full
+    # name, since then the scenario is what is being compared.
+    scen_parts = {name.partition("_")[0] for name, _m in results}
+    shared     = scen_parts.pop() if len(scen_parts) == 1 else None
+    legend     = {name: (scheduler_title(name.partition("_")[2]) if shared
+                         else scenario_title(name))
+                  for name, _m in results}
+
     fig = plt.figure(figsize=(14, 10))
     gs  = gridspec.GridSpec(2, 2, figure=fig, hspace=0.45, wspace=0.35)
 
     # 1. Cumulative missed per test
     ax1 = fig.add_subplot(gs[0, 0])
     for i, (name, m) in enumerate(results):
-        ax1.plot(m["ticks"], m["cumulative_missed"], color=colors[i], linewidth=1, label=name)
+        ax1.plot(m["ticks"], m["cumulative_missed"], color=colors[i], linewidth=1, label=legend[name])
     ax1.set_ylabel("Cumulative missed")
     ax1.set_xlabel("Tick")
     ax1.set_title("Cumulative Missed Deadlines")
@@ -626,7 +791,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
     for i, (name, m) in enumerate(results):
         ratio = [ms / gn if gn > 0 else 0
                  for ms, gn in zip(m["cumulative_missed"], m["cumulative_generated"])]
-        ax2.plot(m["ticks"], ratio, color=colors[i], linewidth=1, label=name)
+        ax2.plot(m["ticks"], ratio, color=colors[i], linewidth=1, label=legend[name])
     ax2.set_ylabel("Miss ratio")
     ax2.set_xlabel("Tick")
     ax2.set_title("Miss Ratio (missed / generated)")
@@ -644,7 +809,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
             req      = m["per_id_req"][pid]
             pos      = x_pos + j + i * bar_w
             ax3.bar(pos, final_sr, width=bar_w, color=colors[i], alpha=0.8,
-                    label=name if j == 0 else "")
+                    label=legend[name] if j == 0 else "")
             ax3.plot([pos - bar_w / 2, pos + bar_w / 2], [req, req],
                      color="black", linewidth=1.2, linestyle="--")
         x_pos += len(m["per_id_req"]) + 1
@@ -658,7 +823,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax4 = fig.add_subplot(gs[1, 1])
     for i, (name, m) in enumerate(results):
         quality = [None if s is None else (0 if s < 3 else 1) for s in m["fsmc_state"]]
-        ax4.plot(m["ticks"], quality, color=colors[i], linewidth=0.6, alpha=0.8, label=name)
+        ax4.plot(m["ticks"], quality, color=colors[i], linewidth=0.6, alpha=0.8, label=legend[name])
     ax4.set_ylabel("Channel Quality")
     ax4.set_xlabel("Tick")
     ax4.set_title("FSMC State Evolution")
@@ -668,10 +833,11 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax4.legend()
     ax4.grid(True, alpha=0.3)
 
-    plt.suptitle("Test Comparison", fontsize=13)
+    plt.suptitle("Test Comparison" + (f" — {scenario_title(shared)}" if shared else ""),
+                 fontsize=13)
     os.makedirs(TESTS_DIR, exist_ok=True)
-    out = os.path.join(TESTS_DIR, "results_comparison.png")
-    plt.savefig(out, dpi=150, bbox_inches="tight")
+    rasterize_dense_artists(fig, max((len(m["ticks"]) for _n, m in results), default=0))
+    out = save_figure(os.path.join(TESTS_DIR, "results_comparison"))
     plt.close()
     print(f"Comparison plot saved to {out}")
 
@@ -1198,10 +1364,99 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
 # scale spans three orders of magnitude across U, which flattens the
 # low-utilization end into an unreadable line on a shared axis.
 PANEL_METRICS = [
-    ("sched_ratio",    "Schedulability ratio\n(met / total)",           (-0.05, 1.05)),
-    ("sched_ratio_mk", "Windowed schedulability\n((m,k), met / total)", (-0.05, 1.05)),
-    ("total_energy",   "Energy (W·time-slot)",                          None),
+    ("sched_ratio",    "Schedulability ratio\n(met / total)",   (-0.05, 1.05)),
+    ("sched_ratio_mk", "Windowed schedulability\n"
+                       f"(({SYM_M}, {SYM_KWIN}), met / total)", (-0.05, 1.05)),
+    ("total_energy",   "Energy (W·time-slot)",                  None),
 ]
+
+def _legend_ncol(labels, per_row: int) -> int:
+    """How many legend columns fit. Width is judged on the *rendered* label:
+    `$P_{\\mathrm{CH}}$` is 17 characters of markup that draws as about three
+    glyphs, so counting the raw string would push every roster into one
+    column. `per_row` is how many of the *short* labels fit across."""
+    longest = max(len(re.sub(r"\$[^$]*\$", "xxx", l)) for l in labels)
+    return per_row if longest <= 22 else max(2, per_row - 1)
+
+def _grouped_legend_columns(handles, labels, key):
+    """Re-order legend entries so that each scheduler gets its own column.
+
+    Matplotlib fills a multi-column legend *column-major*, i.e. consecutive
+    entries go down a column before starting the next. That is what the error
+    sweep wants — a scheduler's three error levels stacked in one column — but
+    only if every column holds the same number of entries. The two
+    predictor-independent schedulers contribute one curve each, so without
+    padding the counts drift and a CHEDF entry lands under the EDFs.
+
+    Groups are `key(label)`-equal runs, padded to the tallest group with blank
+    entries. Adjacent one-entry groups (the fixed-power baselines, which have
+    no error levels) share a column rather than each claiming one. Returns the
+    flattened entries plus the column count to pass as `ncol`."""
+    groups: list[list[tuple]] = []
+    keys:   list[str] = []
+    for h, l in zip(handles, labels):
+        k = key(l)
+        if keys and keys[-1] == k:
+            groups[-1].append((h, l))
+        else:
+            groups.append([(h, l)])
+            keys.append(k)
+
+    rows = max(len(g) for g in groups)
+    cols: list[list[tuple]] = []
+    prev_single = False
+    for g in groups:
+        if len(g) == 1 and prev_single and len(cols[-1]) < rows:
+            cols[-1].extend(g)
+        else:
+            cols.append(list(g))
+        prev_single = len(g) == 1
+
+    out_h, out_l = [], []
+    for col in cols:
+        for h, l in col:
+            out_h.append(h)
+            out_l.append(l)
+        for _ in range(rows - len(col)):          # blank filler, draws nothing
+            out_h.append(Line2D([], [], linestyle="none"))
+            out_l.append("")
+    return out_h, out_l, len(cols)
+
+def _title_and_legend(fig, ax_src, title: str, per_row: int, group_key=None) -> None:
+    """Lay out a sweep figure: suptitle on top, axes, then one legend for the
+    whole figure along the bottom.
+
+    One legend, not one per axis: with 9 curves (11 on the error sweep) an
+    in-axis box covers the curves it labels, and every row (and on the
+    combined figures every column) plots the same roster, so repeating it just
+    spends the space again. Entries come from `ax_src`, which carries them all.
+
+    Both strips are measured, not guessed — legend row count x font size, and
+    the suptitle line — and handed to tight_layout as `rect`, so the axes fit
+    between them however many rows the legend needs.
+
+    `group_key` switches on the grouped column layout described in
+    `_grouped_legend_columns`; without it the entries just flow into as many
+    columns as fit."""
+    handles, labels = ax_src.get_legend_handles_labels()
+    if not handles:
+        fig.tight_layout()
+        fig.suptitle(title)
+        return
+    if group_key is not None:
+        handles, labels, ncol = _grouped_legend_columns(handles, labels, group_key)
+    else:
+        ncol = _legend_ncol(labels, per_row)
+    leg_rows  = math.ceil(len(labels) / ncol)
+    fig_h     = fig.get_figheight()
+    # Inches, converting from points at 72 pt/in, with a little padding.
+    title_in  = plt.rcParams["figure.titlesize"] * 2.0 / 72
+    legend_in = leg_rows * plt.rcParams["legend.fontsize"] * 1.55 / 72 + 0.12
+
+    fig.tight_layout(rect=(0, legend_in / fig_h, 1, 1 - title_in / fig_h))
+    fig.suptitle(title, y=1 - 0.35 * title_in / fig_h)
+    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.0),
+               ncol=ncol, frameon=False, columnspacing=1.6, handlelength=2.6)
 
 def _draw_scenario_panel(axes, scen_name: str, sch_results: dict):
     """Render one column of the sweep figure — one row per PANEL_METRICS entry
@@ -1227,27 +1482,28 @@ def _draw_scenario_panel(axes, scen_name: str, sch_results: dict):
         for row, (key, _label, _ylim) in enumerate(PANEL_METRICS):
             axes[row].plot(xs, [u_to_metrics[u][key] for u in xs], color=color,
                            linestyle=ls, marker=mk, markersize=7,
-                           linewidth=1.5, label=sch_name)
+                           linewidth=1.5, label=scheduler_title(sch_name))
 
     for row, (_key, _label, ylim) in enumerate(PANEL_METRICS):
         if ylim is not None:
             axes[row].set_ylim(*ylim)
         axes[row].grid(True, alpha=0.3)
-        axes[row].legend(fontsize=8, ncol=1)
-    axes[0].set_title(scen_name)
-    axes[len(PANEL_METRICS) - 1].set_xlabel("Utilization U")
+    axes[0].set_title(scenario_title(scen_name))
+    axes[len(PANEL_METRICS) - 1].set_xlabel(f"Utilization {SYM_U}")
 
 def _safe_filename(s: str) -> str:
     """Make a scenario label safe to use as a filename component."""
     return s.replace("[", "").replace("]", "").replace(",", "_").replace("=", "")
 
 def _window_k_suffix() -> str:
-    """" (m,k window k=N)" for figures that actually draw the windowed row,
-    empty otherwise — hf_experiment/run.py drops that row, and naming a
-    k the figure never uses only invites the reader to look for it."""
+    """" (K_win=N)" for figures that actually draw the windowed row, empty
+    otherwise — hf_experiment/run.py drops that row, and naming a window
+    length the figure never uses only invites the reader to look for it. Only
+    the value goes in the title; the (m, K_win) pair is already on that row's
+    y-axis, and the scenario label makes these titles long enough."""
     if not any(key == "sched_ratio_mk" for key, _l, _y in PANEL_METRICS):
         return ""
-    return f" (m,k window k={BASE_SIM.get('window_k', 100)})"
+    return f" ({SYM_KWIN}={BASE_SIM.get('window_k', 100)})"
 
 def plot_schedulability(results: dict):
     scen_names = list(results.keys())
@@ -1266,14 +1522,12 @@ def plot_schedulability(results: dict):
         _draw_scenario_panel(axes[:, col], scen_name, results[scen_name])
     for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
         axes[row, 0].set_ylabel(label)
-    plt.suptitle(title, fontsize=13)
-    plt.tight_layout()
-    out = os.path.join(TESTS_DIR, "results_schedulability.png")
-    plt.savefig(out, dpi=150, bbox_inches="tight")
+    _title_and_legend(fig, axes[0, 0], title, per_row=5)
+    out = save_figure(os.path.join(TESTS_DIR, "results_schedulability"))
     plt.close()
     print(f"Schedulability plot saved to {out}")
 
-    # Per-scenario figures: same layout, one PNG each.
+    # Per-scenario figures: same layout, one file per format each.
     for scen_name in scen_names:
         fig, axs = plt.subplots(n_rows, 1, figsize=(7, 4.2 * n_rows), sharex=True)
         _draw_scenario_panel(axs, scen_name, results[scen_name])
@@ -1282,10 +1536,10 @@ def plot_schedulability(results: dict):
         axs[0].set_title("")
         for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
             axs[row].set_ylabel(label)
-        plt.suptitle(f"{title} — {scen_name}", fontsize=12)
-        plt.tight_layout()
-        out = os.path.join(TESTS_DIR, f"results_schedulability_{_safe_filename(scen_name)}.png")
-        plt.savefig(out, dpi=150, bbox_inches="tight")
+        _title_and_legend(fig, axs[0], f"{title} — {scenario_title(scen_name)}",
+                          per_row=3)
+        out = save_figure(os.path.join(TESTS_DIR,
+                                       f"results_schedulability_{_safe_filename(scen_name)}"))
         plt.close()
         print(f"Schedulability plot saved to {out}")
 
@@ -1385,6 +1639,17 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
     warn_vacuous(results, 3)
     return results
 
+def _error_sweep_group(label: str) -> str:
+    """Legend grouping key for the error sweep: the label with its error term
+    stripped, so a scheduler's three ε curves group together. Reads the labels
+    `scheduler_title(sch_name, "ε = …")` produces, where the ε term follows a
+    comma for a fixed-power scheduler (`CHEDF (P_CH = 25 W, ε = 0.15)`) but an
+    open bracket for CATS, which has no power term (`CATS (ε = 0.15)`) — hence
+    the split on either. The two must stay in step; a label whose ε term were
+    formatted differently would give that curve its own column, not a wrong
+    one."""
+    return re.split(r",? ?" + re.escape(SYM_ERR), label)[0].rstrip(" (")
+
 def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
     """Draw one scenario column of the error-sweep figure — one row per
     PANEL_METRICS entry. Color/marker are fixed per scheduler so the curves
@@ -1413,7 +1678,7 @@ def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
         for row, (key, _label, _ylim) in enumerate(PANEL_METRICS):
             axes[row].plot(xs, [u_to_m[u][key] for u in xs], color=color,
                            linestyle="-", marker=mk, markersize=7,
-                           linewidth=1.5, label=sch_name)
+                           linewidth=1.5, label=scheduler_title(sch_name))
 
     # Predictor-sensitive schedulers — one curve per error level, linestyle
     # differentiates.
@@ -1425,7 +1690,7 @@ def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
                 continue
             xs    = sorted(u_to_m.keys())
             ls    = err_linestyles[err]
-            label = f"{sch_name} (e={err:.2f})"
+            label = scheduler_title(sch_name, f"{SYM_ERR} = {err:.2f}")
             for row, (key, _label, _ylim) in enumerate(PANEL_METRICS):
                 axes[row].plot(xs, [u_to_m[u][key] for u in xs], color=color,
                                linestyle=ls, marker=mk, markersize=6,
@@ -1435,9 +1700,8 @@ def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
         if ylim is not None:
             axes[row].set_ylim(*ylim)
         axes[row].grid(True, alpha=0.3)
-        axes[row].legend(fontsize=8, ncol=1)
-    axes[0].set_title(scen_name)
-    axes[len(PANEL_METRICS) - 1].set_xlabel("Utilization U")
+    axes[0].set_title(scenario_title(scen_name))
+    axes[len(PANEL_METRICS) - 1].set_xlabel(f"Utilization {SYM_U}")
 
 def plot_error_sweep(results: dict):
     """Combined + per-scenario figures for the prediction-error sweep.
@@ -1461,10 +1725,10 @@ def plot_error_sweep(results: dict):
         _draw_error_sweep_panel(axes[:, col], scen_name, by_scen[scen_name])
     for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
         axes[row, 0].set_ylabel(label)
-    plt.suptitle(f"Schedulability and Energy vs Utilization — {title}", fontsize=13)
-    plt.tight_layout()
-    out = os.path.join(TESTS_DIR, "results_error_sweep.png")
-    plt.savefig(out, dpi=150, bbox_inches="tight")
+    _title_and_legend(fig, axes[0, 0],
+                      f"Schedulability and Energy vs Utilization — {title}",
+                      per_row=5, group_key=_error_sweep_group)
+    out = save_figure(os.path.join(TESTS_DIR, "results_error_sweep"))
     plt.close()
     print(f"Error-sweep plot saved to {out}")
 
@@ -1474,10 +1738,10 @@ def plot_error_sweep(results: dict):
         axs[0].set_title("")   # already in the suptitle
         for row, (_key, label, _ylim) in enumerate(PANEL_METRICS):
             axs[row].set_ylabel(label)
-        plt.suptitle(f"{title} — {scen_name}", fontsize=12)
-        plt.tight_layout()
-        out = os.path.join(TESTS_DIR, f"results_error_sweep_{_safe_filename(scen_name)}.png")
-        plt.savefig(out, dpi=150, bbox_inches="tight")
+        _title_and_legend(fig, axs[0], f"{title} — {scenario_title(scen_name)}",
+                          per_row=3, group_key=_error_sweep_group)
+        out = save_figure(os.path.join(TESTS_DIR,
+                                       f"results_error_sweep_{_safe_filename(scen_name)}"))
         plt.close()
         print(f"Error-sweep plot saved to {out}")
 

@@ -2,6 +2,8 @@ main
 bin/
 *.json
 *.png
+*.pdf
+*.svg
 __pycache__
 
 # Prerequisites
