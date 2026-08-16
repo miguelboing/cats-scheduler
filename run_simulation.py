@@ -61,6 +61,16 @@ plt.rcParams.update({
     "ytick.labelsize":   12,
     "legend.fontsize":   12,
     "figure.titlesize":  15,
+    # A solid mid-gray grid drowned the curves; dotted light gray reads as a
+    # guide instead. Both axes — a value is read off y, but tracing a
+    # utilization down the column wants the vertical lines too. The two bar
+    # charts stay y-only, where verticals would just cut through the bars.
+    "axes.grid":         False,      # each axis still opts in explicitly
+    "axes.axisbelow":    True,       # never over the data
+    "grid.color":        "#9a9a9a",
+    "grid.linestyle":    ":",
+    "grid.linewidth":    0.8,
+    "grid.alpha":        1.0,
 })
 if os.environ.get("MPL_USETEX"):
     plt.rcParams.update({"text.usetex": True,
@@ -664,7 +674,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax1.set_yticks(range(2))
     ax1.set_yticklabels(["Excellent", "Worst"])
     ax1.invert_yaxis()
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(True)
 
     # 2. Actual vs predicted probability
     ax2 = fig.add_subplot(gs[1, 0])
@@ -677,7 +687,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax2.set_title("Actual vs Predicted Probability")
     ax2.set_ylim(0, 1.05)
     ax2.legend(markerscale=3)
-    ax2.grid(True, alpha=0.3)
+    ax2.grid(True)
 
     # 3. Cumulative reliability per packet
     ax3 = fig.add_subplot(gs[1, 1])
@@ -693,7 +703,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax3.set_title("Cumulative TX Reliability per Packet")
     ax3.set_ylim(0, 1.05)
     ax3.legend()
-    ax3.grid(True, alpha=0.3)
+    ax3.grid(True)
 
     # 4. Cumulative generated vs missed vs dropped
     ax4 = fig.add_subplot(gs[2, 0])  # row 2
@@ -712,7 +722,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax4.set_xlabel("Tick")
     ax4.set_title("Cumulative Generated vs Missed vs Dropped")
     ax4.legend()
-    ax4.grid(True, alpha=0.3)
+    ax4.grid(True)
 
     # 5. Undelivered packets per packet ID (generated vs not fully received)
     ax5 = fig.add_subplot(gs[3, :])
@@ -728,7 +738,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax5.set_ylabel("Packet instances")
     ax5.set_title("Generated vs Undelivered Packet Instances (not all frames received)")
     ax5.legend()
-    ax5.grid(True, alpha=0.3, axis="y")
+    ax5.grid(True, axis="y")
 
     # 6. Per-frame TX power (0W for IDLE/RX) with running average
     ax6 = fig.add_subplot(gs[2, 1])
@@ -741,7 +751,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax6.set_xlabel("Frame")
     ax6.set_title("TX Power per Frame (0 W = IDLE/RX)")
     ax6.legend()
-    ax6.grid(True, alpha=0.3)
+    ax6.grid(True)
 
     # The test name ends in the roster label (richer than the bare type, which
     # carries no power), so scheduler_type is only the fallback for a name
@@ -784,7 +794,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax1.set_xlabel("Tick")
     ax1.set_title("Cumulative Missed Deadlines")
     ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(True)
 
     # 2. Miss ratio (missed / generated) per test
     ax2 = fig.add_subplot(gs[0, 1])
@@ -797,7 +807,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax2.set_title("Miss Ratio (missed / generated)")
     ax2.set_ylim(0, 1.05)
     ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    ax2.grid(True)
 
     # 3. Final cumulative reliability per packet per test
     ax3 = fig.add_subplot(gs[1, 0])
@@ -817,7 +827,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax3.set_title("Final Reliability vs Requirement per Packet")
     ax3.set_ylim(0, 1.05)
     ax3.legend()
-    ax3.grid(True, alpha=0.3, axis="y")
+    ax3.grid(True, axis="y")
 
     # 4. FSMC state evolution per test (Excellent vs Worst)
     ax4 = fig.add_subplot(gs[1, 1])
@@ -831,7 +841,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax4.set_yticklabels(["Excellent", "Worst"])
     ax4.invert_yaxis()
     ax4.legend()
-    ax4.grid(True, alpha=0.3)
+    ax4.grid(True)
 
     plt.suptitle("Test Comparison" + (f" — {scenario_title(shared)}" if shared else ""),
                  fontsize=13)
@@ -1487,7 +1497,7 @@ def _draw_scenario_panel(axes, scen_name: str, sch_results: dict):
     for row, (_key, _label, ylim) in enumerate(PANEL_METRICS):
         if ylim is not None:
             axes[row].set_ylim(*ylim)
-        axes[row].grid(True, alpha=0.3)
+        axes[row].grid(True)
     axes[0].set_title(scenario_title(scen_name))
     axes[len(PANEL_METRICS) - 1].set_xlabel(f"Utilization {SYM_U}")
 
@@ -1699,7 +1709,7 @@ def _draw_error_sweep_panel(axes, scen_name: str, err_to_sch: dict):
     for row, (_key, _label, ylim) in enumerate(PANEL_METRICS):
         if ylim is not None:
             axes[row].set_ylim(*ylim)
-        axes[row].grid(True, alpha=0.3)
+        axes[row].grid(True)
     axes[0].set_title(scenario_title(scen_name))
     axes[len(PANEL_METRICS) - 1].set_xlabel(f"Utilization {SYM_U}")
 
