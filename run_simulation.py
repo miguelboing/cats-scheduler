@@ -315,20 +315,55 @@ def scheduler_title(label: str, *extra: str) -> str:
     parts.extend(extra)
     return tex_safe(base) + (f" ({', '.join(parts)})" if parts else "")
 
+def _math(sym: str, expr: str) -> str:
+    """Compose one of the SYM_* constants — which carry their own `$…$` — with
+    an expression, as a single mathtext run: `_math(SYM_L, r"\\in \\{1,3\\}")`.
+    Keeps the constants the one place a symbol is spelled."""
+    return f"${sym.strip('$')} {expr}$"
+
+# One field of a scenario label: a scalar (`U=10`, `n=4`) or a range
+# (`L=[1,3]`, `RR=[0.5,0.9]`). Matching the whole field, brackets included, is
+# what lets the renderer below tell the two apart.
+_SCEN_FIELD_RE = re.compile(r"(U|n)=([^,]+)|(L|RR)=\[([^,]+),([^\]]+)\]")
+
+def _render_scen_field(m: "re.Match") -> str:
+    """One field of a scenario label as mathtext.
+
+    `=` is kept only for the values that really are exact (N, U). The two
+    ranges are the interval a task's parameter is *drawn from*, so writing
+    `L_n = [1,3]` would equate a scalar with a set; they get `∈` instead, with
+    the bracket matching the domain — braces for the integer frame count
+    (`random.randint`), square brackets for the continuous reliability
+    (`random.uniform`)."""
+    if m.group(1):                                   # scalar field
+        name, value = m.group(1), m.group(2)
+        if name == "U":
+            # scenario_label stores U as an integer percentage so the string
+            # stays filename-safe; show the fraction the axes actually use.
+            value = f"{int(value) / 100:.2f}"
+        return _math(_SCEN_SYMBOLS[name], f"= {value}")
+    name, lo, hi = m.group(3), m.group(4), m.group(5)
+    if lo == hi:
+        return _math(_SCEN_SYMBOLS[name], f"= {lo}")
+    if name == "L":
+        # Enumerate a short run ({1,2,3}); elide a long one ({1,…,9}).
+        span = range(int(lo), int(hi) + 1)
+        body = ",".join(str(v) for v in span) if len(span) <= 4 else rf"{lo},\dots,{hi}"
+        return _math(SYM_L, rf"\in \{{{body}\}}")
+    return _math(SYM_RR, rf"\in [{lo}, {hi}]")
+
 def scenario_title(label: str) -> str:
-    """Display form of a scenario label: paper symbols in mathtext, and a
-    space after each separating comma. Applied only at draw time — the label
-    itself has to stay filename-safe. Rewrites `U=`/`n=`/`L=`/`RR=` only where
-    they start a field, so the commas inside `[1,3]` are left alone.
+    """Display form of a scenario label — paper symbols in mathtext, one field
+    per `_render_scen_field`. Applied only at draw time; the label itself has
+    to stay filename-safe.
 
     A test name carries its roster label after an underscore
     (`U=10,n=2,...,RR=[0.5,0.9]_CHEDF_25W`); that tail is split off and run
     through `scheduler_title()`. Nothing else in a scenario label contains an
     underscore, so the split is unambiguous."""
     scen, _sep, sched = label.partition("_")
-    out = re.sub(r"(^|,)(U|n|L|RR)=",
-                 lambda m: ("" if not m.group(1) else ", ") + _SCEN_SYMBOLS[m.group(2)] + "=",
-                 tex_safe(scen))
+    fields = [_render_scen_field(m) for m in _SCEN_FIELD_RE.finditer(scen)]
+    out    = ", ".join(fields) if fields else tex_safe(scen)
     return f"{out} — {scheduler_title(sched)}" if sched else out
 
 # Each scenario: (U, n, c_min, c_max, rr_min, rr_max)
