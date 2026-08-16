@@ -47,10 +47,10 @@ def uunifast(n: int, U: float) -> list[float]:
     return utils
 
 def uunifast_packets(n: int, U: float, c_min: int, c_max: int,
-                     sr_min: float, sr_max: float) -> list[dict]:
+                     rr_min: float, rr_max: float) -> list[dict]:
     """Turn a UUniFast draw into a fixed_rate packet list.
     Each task gets an independent frame count C ~ uniform_int[c_min, c_max]
-    and success-rate requirement sr ~ uniform[sr_min, sr_max]. Deadline is
+    and reliability requirement rr ~ uniform[rr_min, rr_max]. Deadline is
     derived from utilization: D = floor(C / u). Since UUniFast yields u in
     (0,1), we have D >= C, so the floored D keeps actual u' = C/D in (u, 1]
     — utilization stays at-or-slightly-above the requested level instead of
@@ -64,7 +64,7 @@ def uunifast_packets(n: int, U: float, c_min: int, c_max: int,
             "id":                i + 1,
             "relative_deadline": D,
             "frames":            C,
-            "success_rate":      round(random.uniform(sr_min, sr_max), 2),
+            "success_rate":      round(random.uniform(rr_min, rr_max), 2),
             "period":            D,
             "phase":             0,
         })
@@ -88,7 +88,7 @@ def make_config(test: dict, seed: Optional[int] = None) -> dict:
             "type":    "fixed_rate",
             "packets": uunifast_packets(spec["n"], spec["U"],
                                         spec["c_min"],  spec["c_max"],
-                                        spec["sr_min"], spec["sr_max"]),
+                                        spec["rr_min"], spec["rr_max"]),
         }]
     if seed is not None:
         config["simulation"] = dict(config["simulation"], seed=int(seed))
@@ -140,7 +140,7 @@ BASE_SIM = {
 #
 #   k >= 1 / (1 - success_rate_req)   or m = ceil(req*k) == k and the window
 #                                     silently degenerates to zero-miss. At
-#                                     sr_max = 0.90 that floor is k = 10.
+#                                     rr_max = 0.90 that floor is k = 10.
 #   k <= instances per id             or the id has no complete window and is
 #                                     scored vacuously met (see warn_vacuous).
 #                                     This is the binding constraint at k=100.
@@ -157,7 +157,7 @@ if os.environ.get("WINDOW_K"):
     BASE_SIM["window_k"] = int(os.environ["WINDOW_K"])
 
 def scenario_label(n: int, c_min: int, c_max: int,
-                   sr_min: float, sr_max: float, U: Optional[float] = None) -> str:
+                   rr_min: float, rr_max: float, U: Optional[float] = None) -> str:
     """Render a scenario's parameters as a compact label used in plot titles
     and filenames. Always derived from the actual values so it can't drift."""
     parts = []
@@ -165,10 +165,11 @@ def scenario_label(n: int, c_min: int, c_max: int,
         parts.append(f"U={int(round(U * 100))}")
     parts.append(f"n={n}")
     parts.append(f"L=[{c_min},{c_max}]")
-    parts.append(f"SR=[{sr_min},{sr_max}]")
+    # RR = reliability requirement (the per-packet `success_rate` field).
+    parts.append(f"RR=[{rr_min},{rr_max}]")
     return ",".join(parts)
 
-# Each scenario: (U, n, c_min, c_max, sr_min, sr_max)
+# Each scenario: (U, n, c_min, c_max, rr_min, rr_max)
 SCENARIOS = [
     (0.10, 2,  1, 3, 0.50, 0.90),
     (0.25, 5,  1, 3, 0.50, 0.90),
@@ -228,7 +229,7 @@ def is_predictor_independent(scheduler: dict) -> bool:
 
 TESTS = [
     {
-        "name": f"{scenario_label(n, c_min, c_max, sr_min, sr_max, U)}_{sch_name}",
+        "name": f"{scenario_label(n, c_min, c_max, rr_min, rr_max, U)}_{sch_name}",
         "config": {
             "simulation": BASE_SIM,
             "scheduler":  scheduler,
@@ -239,11 +240,11 @@ TESTS = [
             "n":      n,
             "c_min":  c_min,
             "c_max":  c_max,
-            "sr_min": sr_min,
-            "sr_max": sr_max,
+            "rr_min": rr_min,
+            "rr_max": rr_max,
         },
     }
-    for U, n, c_min, c_max, sr_min, sr_max in SCENARIOS
+    for U, n, c_min, c_max, rr_min, rr_max in SCENARIOS
     for sch_name, scheduler in SCHEDULERS
 ]
 
@@ -530,7 +531,7 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
     ax2.legend(markerscale=3)
     ax2.grid(True, alpha=0.3)
 
-    # 3. Cumulative success rate per packet
+    # 3. Cumulative reliability per packet
     ax3 = fig.add_subplot(gs[1, 1])
     for i, pid in enumerate(sorted(m["per_id_req"].keys())):
         color = colors[i % len(colors)]
@@ -538,10 +539,10 @@ def plot_test(m: dict, test_name: str, scheduler_type: str):
             ax3.plot(m["per_id_ticks"][pid], m["per_id_success"][pid], color=color, linewidth=1, label=f"id={pid}")
         else:
             ax3.scatter([], [], color=color, label=f"id={pid} (never scheduled)")
-        ax3.axhline(y=m["per_id_req"][pid], color=color, linestyle="--", linewidth=0.8, label=f"req id={pid} ({m['per_id_req'][pid]})")
-    ax3.set_ylabel("Success rate")
+        ax3.axhline(y=m["per_id_req"][pid], color=color, linestyle="--", linewidth=0.8, label=f"RR id={pid} ({m['per_id_req'][pid]})")
+    ax3.set_ylabel("Reliability")
     ax3.set_xlabel("Tick")
-    ax3.set_title("Cumulative TX Success Rate per Packet")
+    ax3.set_title("Cumulative TX Reliability per Packet")
     ax3.set_ylim(0, 1.05)
     ax3.legend()
     ax3.grid(True, alpha=0.3)
@@ -633,7 +634,7 @@ def plot_comparison(results: list[tuple[str, dict]]):
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
-    # 3. Final cumulative success rate per packet per test
+    # 3. Final cumulative reliability per packet per test
     ax3 = fig.add_subplot(gs[1, 0])
     x_pos  = 0
     bar_w  = 0.35
@@ -647,8 +648,8 @@ def plot_comparison(results: list[tuple[str, dict]]):
             ax3.plot([pos - bar_w / 2, pos + bar_w / 2], [req, req],
                      color="black", linewidth=1.2, linestyle="--")
         x_pos += len(m["per_id_req"]) + 1
-    ax3.set_ylabel("Final success rate")
-    ax3.set_title("Final Success Rate vs Requirement per Packet")
+    ax3.set_ylabel("Final reliability")
+    ax3.set_title("Final Reliability vs Requirement per Packet")
     ax3.set_ylim(0, 1.05)
     ax3.legend()
     ax3.grid(True, alpha=0.3, axis="y")
@@ -693,8 +694,8 @@ def print_summary_table(test_name: str, metrics: dict, config: dict):
         f"{'ID':<{col_w[0]}}"
         f"{'Undelivered':>{col_w[1]}}"
         f"{'Generated':>{col_w[2]}}"
-        f"{'Success Ratio':>{col_w[3]}}"
-        f"{'Success Req':>{col_w[4]}}"
+        f"{'Reliability':>{col_w[3]}}"
+        f"{'Reliability Req':>{col_w[4]}}"
         f"{'Avg Power (W)':>{col_w[5]}}"
         f"{'Energy (W·time-slot)':>{col_w[6]}}"
     )
@@ -779,9 +780,9 @@ def print_comparison_table(all_results: list[tuple[str, dict]]):
 
     print(sep)
 
-# ── Success criteria table ────────────────────────────────────────────────────
+# ── Reliability criteria table ────────────────────────────────────────────────
 
-def print_success_criteria_table(all_results: list[tuple[str, dict]]):
+def print_reliability_criteria_table(all_results: list[tuple[str, dict]]):
     name_w = max(len(name) for name, _ in all_results) + 2
     id_w   = 6
     col_w  = 18
@@ -789,15 +790,15 @@ def print_success_criteria_table(all_results: list[tuple[str, dict]]):
     header = (
         f"{'Test':<{name_w}}"
         f"{'ID':<{id_w}}"
-        f"{'Success Ratio':>{col_w}}"
-        f"{'Success Req':>{col_w}}"
+        f"{'Reliability':>{col_w}}"
+        f"{'Reliability Req':>{col_w}}"
         f"{'Delta':>{col_w}}"
         f"{'Met':>{col_w}}"
     )
     sep = "-" * len(header)
 
     print(f"\n{'═' * len(header)}")
-    print("  Success Criteria per Test/ID")
+    print("  Reliability Criteria per Test/ID")
     print(f"{'═' * len(header)}")
     print(header)
     print(sep)
@@ -823,7 +824,7 @@ def print_success_criteria_table(all_results: list[tuple[str, dict]]):
 
 # ── Schedulability sweep ──────────────────────────────────────────────────────
 
-# Each sweep scenario fixes (n, c_min, c_max, sr_min, sr_max); U is swept.
+# Each sweep scenario fixes (n, c_min, c_max, rr_min, rr_max); U is swept.
 SWEEP_SCENARIOS = [
     (4,  1, 3, 0.50, 0.90),
     (10, 1, 3, 0.50, 0.90),
@@ -892,7 +893,7 @@ def window_m(req: float, k: int) -> int:
     Mirrors the C++ computation in main.cpp exactly, epsilon included. The
     nudge matters: `success_rate` is drawn as a 2-decimal float, and a bare
     ceil overshoots by one wherever that float rounds up. math.ceil(0.55*100)
-    is 56 and math.ceil(0.56*100) is 57, both inside the sweep's SR band,
+    is 56 and math.ceil(0.56*100) is 57, both inside the sweep's RR band,
     which would hold those tasks to a stricter rate than they requested.
     """
     return math.ceil(req * k - 1e-9)
@@ -906,13 +907,13 @@ def warn_window_k(scenarios: list) -> None:
     if k <= 0:
         print("window_k <= 0 — (m,k) check disabled; sched_ratio_mk will be 1.0")
         return
-    sr_max = max(s[4] for s in scenarios)
-    if window_m(sr_max, k) >= k:
+    rr_max = max(s[4] for s in scenarios)
+    if window_m(rr_max, k) >= k:
         # Smallest k admitting one miss. Searched on the same ceil the C++ side
         # uses rather than 1/(1-req), which floating point rounds up by one at
         # req=0.9 (1/(1-0.9) == 10.000000000000002).
-        floor_k = next(kk for kk in range(2, 10001) if window_m(sr_max, kk) < kk)
-        print(f"WARNING: window_k={k} is too short for success_rate up to {sr_max} "
+        floor_k = next(kk for kk in range(2, 10001) if window_m(rr_max, kk) < kk)
+        print(f"WARNING: window_k={k} is too short for a reliability requirement up to {rr_max} "
               f"— m == k, so those tasks are held to zero misses. "
               f"Use window_k >= {floor_k} (WINDOW_K env var).")
 
@@ -1088,7 +1089,7 @@ def average_metrics(runs: list[dict]) -> dict:
         for i in range(len(last["tx_power"]))
     ]
 
-    # Success-rate requirements vary per run now (drawn from sr_min..sr_max),
+    # Reliability requirements vary per run now (drawn from rr_min..rr_max),
     # so average them per-id alongside the other metrics.
     per_id_req = {
         pid: sum(m["per_id_req"].get(pid, 0) for m in runs) / n
@@ -1112,8 +1113,8 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
     """For each (scenario, U, scheduler), run n_runs sims in a single big pool.
     Returns nested dict results[scen_name][sch_name][U] = avg_schedulability."""
     jobs = []
-    for n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS:
-        scen_name = scenario_label(n, c_min, c_max, sr_min, sr_max)
+    for n, c_min, c_max, rr_min, rr_max in SWEEP_SCENARIOS:
+        scen_name = scenario_label(n, c_min, c_max, rr_min, rr_max)
         for U in U_VALUES:
             for sch_name, scheduler in SCHEDULERS:
                 test = {
@@ -1126,7 +1127,7 @@ def run_sweep(n_runs: int, n_workers: int) -> dict:
                     "uunifast": {
                         "U":      U, "n":      n,
                         "c_min":  c_min, "c_max":  c_max,
-                        "sr_min": sr_min, "sr_max": sr_max,
+                        "rr_min": rr_min, "rr_max": rr_max,
                     },
                 }
                 for run_idx in range(n_runs):
@@ -1305,8 +1306,8 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
     jobs = []
     for err in PREDICT_ERRORS:
         sim_block = dict(BASE_SIM, predict_error=err)
-        for n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS:
-            scen_name = scenario_label(n, c_min, c_max, sr_min, sr_max)
+        for n, c_min, c_max, rr_min, rr_max in SWEEP_SCENARIOS:
+            scen_name = scenario_label(n, c_min, c_max, rr_min, rr_max)
             for U in U_VALUES:
                 for sch_name, scheduler in ERROR_SWEEP_SCHEDULERS:
                     # Predictor-independent schedulers (RM) — run them once.
@@ -1322,7 +1323,7 @@ def run_error_sweep(n_runs: int, n_workers: int) -> dict:
                         "uunifast": {
                             "U":      U, "n":      n,
                             "c_min":  c_min, "c_max":  c_max,
-                            "sr_min": sr_min, "sr_max": sr_max,
+                            "rr_min": rr_min, "rr_max": rr_max,
                         },
                     }
                     for run_idx in range(n_runs):
@@ -1509,8 +1510,8 @@ def write_experiment_params(mode: str, n_runs: int, run_name: Optional[str]) -> 
         params["scenarios"] = {
             "SWEEP_SCENARIOS": [
                 {"n": n, "c_min": c_min, "c_max": c_max,
-                 "sr_min": sr_min, "sr_max": sr_max}
-                for n, c_min, c_max, sr_min, sr_max in SWEEP_SCENARIOS
+                 "rr_min": rr_min, "rr_max": rr_max}
+                for n, c_min, c_max, rr_min, rr_max in SWEEP_SCENARIOS
             ],
             "U_VALUES": U_VALUES,
         }
@@ -1520,8 +1521,8 @@ def write_experiment_params(mode: str, n_runs: int, run_name: Optional[str]) -> 
         params["scenarios"] = {
             "SCENARIOS": [
                 {"U": U, "n": n, "c_min": c_min, "c_max": c_max,
-                 "sr_min": sr_min, "sr_max": sr_max}
-                for U, n, c_min, c_max, sr_min, sr_max in SCENARIOS
+                 "rr_min": rr_min, "rr_max": rr_max}
+                for U, n, c_min, c_max, rr_min, rr_max in SCENARIOS
             ],
         }
 
@@ -1657,7 +1658,7 @@ if __name__ == "__main__":
     if len(all_results) > 1:
         plot_comparison(all_results)
         print_comparison_table(all_results)
-        print_success_criteria_table(all_results)
+        print_reliability_criteria_table(all_results)
 
     print(f"\nTotal elapsed: {format_duration(time.perf_counter() - t_start)}")
 
