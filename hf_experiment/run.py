@@ -115,7 +115,7 @@ rs.ERROR_SWEEP_SCHEDULERS = [
 ]
 
 # Three scenarios — same axes as run_simulation's SWEEP_SCENARIOS, just
-# with the 0.6-0.9 SR range and three task counts.
+# with the 0.50-0.90 RR range and three task counts.
 rs.SWEEP_SCENARIOS = [
     (4,  1, 3, 0.50, 0.90),
     (10, 1, 3, 0.50, 0.90),
