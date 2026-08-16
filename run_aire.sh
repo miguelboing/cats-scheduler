@@ -67,6 +67,13 @@ export OPENBLAS_NUM_THREADS=1
 
 N_RUNS="${N_RUNS:-50}"   # runs averaged per (scenario, U, scheduler) point
 MODE="${MODE:-sweep}"    # tests | sweep | error_sweep
+case "${MODE}" in
+    tests|sweep|error_sweep) ;;
+    *) echo "ERROR: MODE='${MODE}' is not one of tests|sweep|error_sweep." >&2
+       echo "       A typo here used to run the far heavier 'tests' mode instead," >&2
+       echo "       which OOM-kills the step at n_runs>16 on --mem-per-cpu=1G." >&2
+       exit 1 ;;
+esac
 RUN_NAME="${1:-run-${SLURM_JOB_ID}}"
 BELIEF_THRESHOLD="${2:-}"        # optional; if empty, run_simulation.py uses its default
 UTILIZATION_THRESHOLD="${3:-}"   # optional; if empty, run_simulation.py uses its default

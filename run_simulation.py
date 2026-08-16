@@ -20,6 +20,10 @@ from matplotlib.lines import Line2D
 
 TESTS_DIR = "tests"
 
+# The modes the CLI accepts, checked before anything runs — see the guard in
+# __main__ for why an unknown one must not fall through to `tests`.
+MODES = ("tests", "sweep", "error_sweep")
+
 # ── Figure style and paper symbols ────────────────────────────────────────────
 #
 # Every symbol below is written as matplotlib *mathtext* (`$...$`), which is
@@ -1842,6 +1846,16 @@ if __name__ == "__main__":
     belief_threshold      = float(sys.argv[4]) if len(sys.argv) > 4 else None
     utilization_threshold = float(sys.argv[5]) if len(sys.argv) > 5 else None
     n_workers             = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+
+    # Fail fast on a misspelled mode. This used to fall through to `tests`,
+    # which is the most expensive mode by far — it parses the full ~180 MB log
+    # per run in Python — so a typo like `error` for `error_sweep` did not
+    # error out, it quietly launched a 200-run tests job and OOM-killed the
+    # SLURM step hours later.
+    if mode not in MODES:
+        sys.exit(f"unknown mode {mode!r} — expected one of {', '.join(MODES)}.\n"
+                 f"usage: python run_simulation.py <n_runs> <{'|'.join(MODES)}> "
+                 f"<run_name> [belief_threshold] [utilization_threshold]")
 
     if belief_threshold is not None:
         BASE_CATS_SCHEDULER["belief_threshold"] = belief_threshold
