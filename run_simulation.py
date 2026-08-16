@@ -38,7 +38,7 @@ MODES = ("tests", "sweep", "error_sweep")
 # are spelled — never inline `$\theta_n$` at a call site.
 SYM_RR   = r"$\theta_n$"                # reliability requirement of task n
 SYM_N    = r"$N$"                       # number of tasks in the set
-SYM_L    = r"$L$"                       # packet length, in frames
+SYM_L    = r"$L_n$"                     # packet length of task n, in frames
 SYM_U    = r"$U$"                       # total utilization
 SYM_M    = r"$m$"                       # deliveries required per window
 SYM_KWIN = r"$K_{\mathrm{win}}$"        # window length, in instances
