@@ -1,56 +1,54 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 #include <memory>
 #include <string>
 
 typedef struct
 {
-    unsigned int id;                /* ID: Tasks unique identifier */
-    unsigned int id_count;          /* PC: Identifier between packets with the same ID */
-    unsigned int deadline;          /* D : This is the relative deadline */
-    unsigned int frames;            /* C : A unit consumes one frame */
-    unsigned int frame_count;       /* FC: The amount of frames transmitted from this packet_count */
-    double       success_rate_req;  /* S : Success rate requirement for the packet */
-} packet_t;
+    unsigned int id;                  /* ID: Tasks unique identifier */
+    unsigned int id_count;            /* PC: Identifier between packets with the same ID */
+    unsigned int deadline;            /* D : This is the relative deadline */
+    unsigned int frames;              /* C : A unit consumes one frame */
+    unsigned int frame_count;         /* FC: The amount of frames transmitted from this packet_count */
+    double       reliability_req;    /* RR : Reliability requirement for the packet */
+    bool         is_periodic = false; /* Flag to warn the scheduler if this packet is periodic or not */
+    unsigned int period;              /* P: If is_periodic is true, this value represents the period of the packet */
+}
+packet_t;
 
-struct channel_t
+/* Globally-unique key for a packet release. id_count is per-id, so schedulers
+   that key per-release state (CATS, CHARM accumulated_prob) must combine both
+   to avoid cross-task collisions when two tasks happen to share a release
+   number. id occupies the high 32 bits, id_count the low 32. */
+inline uint64_t packet_key(unsigned int id, unsigned int id_count)
 {
-    unsigned int frequency;
-    std::vector<unsigned int> tx_power_levels;
-    std::shared_ptr<std::vector<std::vector<double>>> channel_condition; /* This is a 2D array frame x power */
-    size_t num_power_levels;
+    return (static_cast<uint64_t>(id) << 32) | static_cast<uint64_t>(id_count);
+}
 
-    channel_t(unsigned int frequency, unsigned int num_frames, const std::vector<unsigned int>& tx_power_levels):
-        frequency(frequency), tx_power_levels(tx_power_levels),
-        num_power_levels(tx_power_levels.size())
-    {
-        channel_condition = std::make_shared<std::vector<std::vector<double>>>(
-        num_power_levels, std::vector<double>(num_frames));
-    }
-};
-
-typedef struct
+typedef enum
 {
-    unsigned int number_of_frames;                     /* This is the total number of frames available to transmit */
-    std::vector<unsigned int> frequencies;             /* List of frequencies available for transmission */
-} system_model_t;
+    IDLE=0,
+    TX_MODE,
+    RX_MODE
+} radio_mode_e;
 
 typedef struct
 {
     packet_t* packet;
     unsigned int transmission_power;
     unsigned int frequency;
-}
-scheduled_frame_t;
+    radio_mode_e radio_mode;
+    bool remove_from_buffer = true;
+} scheduled_frame_t;
 
 typedef struct
 {
     packet_t packet;
     unsigned int transmission_power;
     unsigned int frequency;
-}
-transmitted_frame_t;
+} transmitted_frame_t;
 
 typedef struct
 {
@@ -58,6 +56,13 @@ typedef struct
     unsigned int transmission_power;
     unsigned int frequency;
     double success_prob;
-}
-received_frame_t;
+} received_frame_t;
+
+typedef struct
+{
+    double snr_50_db;        /* beta: SNR for 50% success rate */
+    double slope;            /* alpha: Steepness of sigmoid curve */
+    double max_saturation;   /* gamma: The maximum possible transmission power when tx_power -> inf */
+    double noise_floor_dbm;  /* Noise power in dBm */
+} markov_state_t;
 

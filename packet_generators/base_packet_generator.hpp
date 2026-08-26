@@ -14,6 +14,17 @@ using json = nlohmann::json;
 
 #include "system_model/system_model.hpp"
 
+/* Minimal periodic-task descriptor exposed by generators that produce
+   periodic traffic. Used by schedulers that need a-priori knowledge of the
+   task set (e.g., CATS computing demand/utilization over a horizon). */
+struct periodic_task_t
+{
+    unsigned int id;
+    unsigned int period;            /* T_i: inter-arrival in ticks */
+    unsigned int frames;            /* C_i: frames per release */
+    double       reliability_req;  /* RR_i: required reception probability */
+};
+
 /* This class keeps controls of the arriving packets, transmited packets and missed deadlines */
 class BasePacketGenerator
 {
@@ -33,11 +44,20 @@ public:
 
     virtual std::string get_name() const = 0;
 
+    /* Generators with periodic traffic expose their task set here; default
+       is empty so non-periodic generators don't need to override. */
+    virtual std::vector<periodic_task_t> get_periodic_tasks() const { return {}; }
+
+    /* Toggle per-spawn logging into packet_gen_log. Disable in summary mode
+       to keep memory flat across long-duration runs. */
+    void set_log_enabled(bool enabled) { log_enabled = enabled; }
+
     static void save_to_file(std::shared_ptr<json> log, const std::string& filename);
 
 protected:
     void add_packet_to_buffer(packet_t& packet);
     std::unordered_map<unsigned int, unsigned int> packet_count_map; /* Maps ID-> count */
+    bool log_enabled = true;
 };
 
 inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
@@ -47,16 +67,21 @@ inline void BasePacketGenerator::add_packet_to_buffer(packet_t& packet)
     packet.frame_count = 0U;
 
     /* Log the spawn event */
-    json spawn_entry = {
-        {"system_tick", *(this->system_tick)},
-        {"packet_id", packet.id},
-        {"packet_id_count", packet.id_count},
-        {"deadline", packet.deadline},
-        {"frames", packet.frames},
-        {"success_rate_req", packet.success_rate_req},
-        {"generator_type", this->get_name()}  /* Track which generator spawned it */
-    };
-    this->packet_gen_log->push_back(spawn_entry);
+    if (this->log_enabled)
+    {
+        json spawn_entry = {
+            {"system_tick", *(this->system_tick)},
+            {"packet_id", packet.id},
+            {"packet_id_count", packet.id_count},
+            {"deadline", packet.deadline},
+            {"frames", packet.frames},
+            {"reliability_req", packet.reliability_req},
+            {"is_periodic", packet.is_periodic},
+            {"period", packet.period},
+            {"generator_type", this->get_name()}  /* Track which generator spawned it */
+        };
+        this->packet_gen_log->push_back(spawn_entry);
+    }
 
     /* Spawn a packet to the buffer */
     this->buffer_packet->push_back(packet);

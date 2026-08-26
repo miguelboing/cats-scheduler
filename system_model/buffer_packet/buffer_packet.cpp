@@ -4,8 +4,10 @@ BufferPacket::BufferPacket(std::shared_ptr<unsigned int> sys_tick):
         buffer_packet(std::make_shared<std::vector<packet_t>>()),
         system_tick(sys_tick) {};
 
-void BufferPacket::check_deadlines(void)
+std::vector<packet_t> BufferPacket::check_deadlines(void)
 {
+    std::vector<packet_t> missed_packets;
+
     /* Check each packet state */
     auto it = this->buffer_packet->begin();
     while (it != this->buffer_packet->end())
@@ -16,17 +18,35 @@ void BufferPacket::check_deadlines(void)
         }
         else if (it->deadline < *this->system_tick)
         {
-            std::cout << "Missed packet ID: " << it->id << std::endl;
-            std::cout << "Missed packet ID Counter: " << it->id_count << std::endl;
-            std::cout << "Missed packet deadline: " << it->deadline << std::endl;
-            std::cout << "Current time_frame: " << *this->system_tick << std::endl;
-            ++it;
+            missed_packets.push_back(*it);
+            it = this->buffer_packet->erase(it);
         }
         else
         {
             ++it;
         }
     }
+    return missed_packets;
+}
+
+std::vector<packet_t> BufferPacket::drop_packet(unsigned int id, unsigned int id_count)
+{
+    std::vector<packet_t> dropped;
+    auto it = this->buffer_packet->begin();
+    while (it != this->buffer_packet->end())
+    {
+        if (it->id == id && it->id_count == id_count)
+        {
+            dropped.push_back(*it);
+            it = this->buffer_packet->erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    this->dropped_packets.insert(this->dropped_packets.end(), dropped.begin(), dropped.end());
+    return dropped;
 }
 
 std::string BufferPacket::get_name()
