@@ -1,10 +1,10 @@
-# CATS Scheduler
+# rt-link-sim
 
-A C++ simulator for wireless communication scheduling algorithms with real-time packet deadline management and channel condition modeling.
+Real-time scheduling over an unreliable link — a C++ simulator for wireless communication scheduling algorithms with real-time packet deadline management and channel condition modeling.
 
 ## Overview
 
-CATS Scheduler simulates a wireless communication system where packets with strict deadlines must be transmitted over channels with varying conditions. The simulator models the complete transmission pipeline from packet generation through scheduling, transmission, channel propagation, and reception.
+rt-link-sim simulates a wireless communication system where packets with strict deadlines must be transmitted over channels with varying conditions. The simulator models the complete transmission pipeline from packet generation through scheduling, transmission, channel propagation, and reception.
 
 ## Features
 

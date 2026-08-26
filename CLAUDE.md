@@ -1,6 +1,6 @@
-# CATS Scheduler
+# rt-link-sim
 
-C++ simulator for wireless packet scheduling under deadline + channel-quality constraints. Compares multiple schedulers (CATS, CHARM, CHEDF, EDF, Rate-Monotonic) against synthetic task sets, driven by a Python harness.
+Real-time scheduling over an unreliable link. C++ simulator for wireless packet scheduling under deadline + channel-quality constraints. Compares multiple schedulers (CATS, CHARM, CHEDF, EDF, Rate-Monotonic) against synthetic task sets, driven by a Python harness.
 
 ## Entry points
 
@@ -68,6 +68,10 @@ A roster is a list of `(label, config)` pairs, where the label names the curve i
 
 Anything reading a roster must pick the right one — `run_error_sweep`, `_draw_error_sweep_panel`, and `write_experiment_params` all switch on the mode. `_draw_scenario_panel` takes color/linestyle/marker straight from enumeration order of the data it is handed, not from `SCHEDULERS`, so it renders whatever roster it is given; its `linestyles`/`markers` lists must stay at least as long as the longest roster or two curves share a style.
 
+**Legends live outside the axes, in the header.** With 9 curves (11 on the error sweep) and labels that now read `CHARM (P_CH = 25 W, ε = 0.15)`, an in-axis box covers the curves it labels. `_title_and_legend()` owns the frame of every sweep figure: suptitle on top, axes, then one figure-level legend along the bottom. One legend per figure, not per axis — every row (and on the combined figures every column) plots the same roster. Both strips are *measured* (legend row count × `legend.fontsize`, and the suptitle line) and passed to `tight_layout(rect=…)`, so the axes fit between them whatever the legend's height; the panel drawers just plot and never call `legend()`.
+
+The error sweep passes `group_key=_error_sweep_group` to get **one column per scheduler**: matplotlib fills a multi-column legend column-major, which stacks a scheduler's three ε curves only if every column holds the same number of entries, so `_grouped_legend_columns()` pads each group to the tallest with blank entries and lets adjacent one-entry groups (the fixed-power baselines, which have no ε levels) share a column. Without it the two EDFs shift everything and a CHEDF curve lands under them. `_legend_ncol()` picks the column count from the *rendered* label width — `$P_{\mathrm{CH}}$` is 17 characters of markup that draws as about three glyphs, so the raw length would misjudge it.
+
 Neither figure draws the 10th/90th-percentile bands any more — with 9 curves per axis the bands overlapped into an unreadable smear. `aggregate_runs` still records `<metric>_lo` / `<metric>_hi` in the results dict, so the spread is available offline.
 
 **CHEDF is its own scheduler type and its own standalone class** (`schedulers/chedf/`, subclassing `BaseScheduler` directly), taking the same config parameters as CHARM: `tx_power`, `frequency`, `rx_period`.
@@ -110,16 +114,28 @@ Set `SEED=<int>` env var before running the harness: `SEED=42 python run_simulat
 
 - `simulation_log.json` — per-tick log (large, ~8 MB for 5000-frame runs).
 - `<scheduler>_scheduled_packets.json`, `generated_packets.json`, `received_packets.json` — per-component logs from `main.cpp`.
-- `results_*.png` — plots produced by `run_simulation.py`.
-- `*.json` and `*.png` are gitignored; don't commit them.
+- `results_*.png` / `results_*.pdf` — plots produced by `run_simulation.py`. Every figure is written once per entry in `PLOT_FORMATS` (env var, default `png,pdf`); the PDF is the vector copy for the paper, the PNG a 150-dpi raster for quick viewing. `save_figure()` owns the extension, so call sites pass a base path.
+- `*.json`, `*.png`, `*.pdf` and `*.svg` are gitignored; don't commit them.
 
 ## Figure labels
 
-Plots use the paper's symbols, spelled once as module constants at the top of `run_simulation.py` — `SYM_RR` (`$\theta_n$`, reliability requirement), `SYM_N` (`$N$`), `SYM_L` (`$L$`), `SYM_U` (`$U$`), `SYM_M` (`$m$`), `SYM_KWIN` (`$K_{\mathrm{win}}$`), `SYM_ERR` (`$\varepsilon$`, predictor error). Use the constant, never an inline `$…$`.
+Plots use the paper's symbols, spelled once as module constants at the top of `run_simulation.py` — `SYM_RR` (`$\theta_n$`, reliability requirement), `SYM_N` (`$N$`), `SYM_L` (`$L_n$`, packet length), `SYM_U` (`$U$`), `SYM_M` (`$m$`), `SYM_KWIN` (`$K_{\mathrm{win}}$`), `SYM_ERR` (`$\varepsilon$`, predictor error), and two power symbols — `SYM_PFP` (`$P_{\mathrm{FP}}$`) for the fixed-power baselines RM/EDF, `SYM_PCH` (`$P_{\mathrm{CH}}$`) for the CHARM-family CHARM/CHEDF. Use the constant, never an inline `$…$`.
 
-Rendering is matplotlib **mathtext** (STIX serif to match the text face), not a TeX install, so figures still draw on AIRE. `MPL_USETEX=1` switches the same strings to real LaTeX; that path additionally needs `type1ec.sty` (texlive-cm-super), which is *not* installed on the dev box — without it every `savefig` dies inside latex. `tex_safe()` escapes `_` etc. in scheduler labels and test names for that path and is a no-op otherwise; only ever pass it a plain string, never one that already contains a `SYM_*`.
+**Roster labels are raw; legends are not.** `scheduler_title()` renders `CHEDF_10W` as `CHEDF (P_CH = 10 W)`, moving the parameters into a parenthesis, and takes extra parts that join the *same* parenthesis — the error sweep passes the ε term, giving `CHEDF (P_CH = 10 W, ε = 0.15)` rather than two bracketed groups. Which power symbol a label gets comes from `_POWER_SYMBOLS`, keyed on the label's base name and defaulting to `P_FP`; a new *family* needs an entry there, a new fixed-power baseline does not. A label with no `_<n>W` suffix (CATS, which picks its own power) passes through as just its name. The raw label still keys the results dicts and names `<scheduler>_scheduled_packets.json`, so never prettify at the source.
 
-**`scenario_label()` stays ASCII** — it keys the results dicts, names the test directories and names the PNGs. `scenario_title()` is the display-only form: it rewrites `U=`/`n=`/`L=`/`RR=` to the symbols at draw time and leaves anything else (e.g. a trailing `_CATS` on a test name) alone. Titles must go through it; filenames must not.
+`plot_comparison` drops the scenario from its legends when every compared test shares one, moving it to the suptitle; with mixed scenarios each legend keeps its full name, since then the scenario is what's being compared.
+
+The grid is **dotted light gray on both axes** — style in the `grid.*` rcParams, so there is one place to change it. Solid mid-gray competed with the curves; dotted reads as a guide. The two bar charts (`plot_test`'s instance counts, `plot_comparison`'s final reliability) pass `axis="y"`, since verticals would only cut through the bars. `axes.axisbelow` keeps the grid behind the data.
+
+Text is set in **Latin Modern Roman** (the LaTeX body face; `texlive-lm` on Fedora, `lmodern` on Debian) and math in matplotlib's bundled **Computer Modern** mathtext — LM is a redraw of CM, so they match, and matplotlib can't load the OTF Latin Modern Math. `font.serif` falls through to STIX then DejaVu where LM isn't installed, so figures still draw on AIRE. A machine that has LM but was first run without it keeps a stale font cache — `rm ~/.cache/matplotlib/fontlist-*.json` once.
+
+Rendering is mathtext, not a TeX install. `MPL_USETEX=1` switches the same strings to real LaTeX; that path additionally needs `type1ec.sty` (texlive-cm-super), which is *not* installed on the dev box — without it every `savefig` dies inside latex. `tex_safe()` escapes `_` etc. in scheduler labels and test names for that path and is a no-op otherwise; only ever pass it a plain string, never one that already contains a `SYM_*`.
+
+PDFs embed Type 42 (TrueType) fonts, not matplotlib's default Type 3 — IEEE/ACM submission checks reject Type 3. Poppler prints a cosmetic "Mismatch between font type and embedded font file" for the Latin Modern OTF (CFF data in a CID-TrueType wrapper); it renders correctly everywhere tried. `rasterize_dense_artists()` rasterizes *data* artists (never text) on figures with more than `RASTERIZE_ABOVE` (20k) points, which is only the per-tick diagnostic figures at long durations — a fully vector PDF of a 250k-frame run is tens of MB and pans badly. The sweep figures are far below the threshold and stay fully vector.
+
+**`scenario_label()` stays ASCII** — it keys the results dicts, names the test directories and names the PNGs. `scenario_title()` is the display-only form; it splits off the roster label a test name carries after an underscore (`…RR=[0.5,0.9]_CHEDF_25W`) to run through `scheduler_title()` — nothing else in a scenario label contains an underscore, which is what makes that split safe — and renders each remaining field via `_render_scen_field()`. Titles must go through it; filenames must not.
+
+`=` is used only for the values that are exact (`$N = 10$`; `$U = 0.10$`, converted back from the integer percentage the filename-safe label stores). The other two fields are the interval a task's parameter is *drawn from*, so `L_n = [1,3]` would equate a scalar with a set — they get `∈`, with the bracket matching the domain: braces for the integer frame count (`random.randint`, enumerated as `{1,2,3}` up to four values and elided as `{1,…,9}` beyond), square brackets for the continuous reliability (`random.uniform`). A degenerate range (`L=[2,2]`) collapses back to `=`.
 
 ## Conventions
 
@@ -134,4 +150,5 @@ Rendering is matplotlib **mathtext** (STIX serif to match the text face), not a 
 - A scheduler's `get_prediction_powers()` must match the power it actually transmits at. CHARM used to hardcode `{10}` while transmitting at its configured `tx_power`, which silently made a 25 W CHARM decide retransmissions from the 10 W decode probability. It now returns `{tx_power}`. Any new fixed-power scheduler needs the same coupling.
 - `get_name()` on CHARM, CHEDF, RM and EDF embeds the power (`CHARM_25W`) because those types run at two power levels and would otherwise overwrite each other's `*_scheduled_packets.json`. EDF returned a bare `"EDF"` until it was promoted to the roster at both powers. CHEDF is a separate class, but since it was copied from CHARM its `get_name()` is the easiest line to forget to change — the pair then collides on the same log.
 - **Module globals do not reach the sweep workers.** `run_sweep` uses a multiprocessing *spawn* pool, so children re-import `run_simulation` from disk and see the file's values, not the parent's. Patching `rs.BINARY` (or any other global `_run_single_sweep` reads) from a driver script silently has no effect — both halves of an A/B run then execute the same binary and produce a fake null result. Swap the binary on disk instead. This is why `hf_experiment/run.py` only patches globals that the *parent* consults when building the `test` dicts.
+- **A misspelled mode used to run `tests`.** `MODE=error` instead of `error_sweep` fell through the mode chain to the default branch, and `tests` is by far the heaviest mode — it parses the full ~180 MB log per run in Python, so a 200-run job OOM-killed the SLURM step hours in (`--mem-per-cpu=1G` × 32 workers). Both `run_simulation.py` (against `MODES`) and `run_aire.sh` now reject an unknown mode before any work starts. The tell in a `.out` file is the header line: `mode=…`, plus per-test dispatch lines and `results_<test>.png` output, where a sweep prints `[sweep] dispatching N sims`.
 - Anything special-casing a scheduler by *label* (e.g. the error sweep skipping predictor-independent schedulers at non-zero error) breaks the moment a variant is added. Key on `config["type"]` via `is_predictor_independent()` instead.

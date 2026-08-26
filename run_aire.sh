@@ -44,8 +44,10 @@ module load miniforge
 module load gcc
 
 # --- Python env -------------------------------------------------------------
-# Create once on a login node:  conda create -n cats-scheduler python=3.12 numpy matplotlib
-conda activate cats-scheduler
+# Create once on a login node:  conda create -n rt-link-sim python=3.12 numpy matplotlib
+# (Renamed from cats-scheduler; on an existing AIRE account run
+#  `conda rename -n cats-scheduler rt-link-sim` before the next submission.)
+conda activate rt-link-sim
 
 # --- Workdir ----------------------------------------------------------------
 cd "${SLURM_SUBMIT_DIR}"

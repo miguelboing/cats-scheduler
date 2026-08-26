@@ -2,9 +2,10 @@
 
 Drives the same sweep machinery as `run_simulation.py` (UUniFast + parallel
 worker pool + schedulability/energy plots) but on top of the ReplayChannel,
-which feeds the predictor a fixed 0.07/0.58/0.80 view of 1/10/25 W (consumed
+which feeds the predictor a fixed 0.38/0.82/0.96 view of 1/10/25 W (consumed
 by CATS and by CHARM at its own tx_power) and replays the per-tick success
-outcomes recorded in frame_success.csv.
+outcomes recorded in frame_success.csv. Both come from a success radius of
+X = 2250 km; see replay_channel.cpp.
 
 Three scenarios (varying task count `n`), U swept over [0.1 .. 1.0], N runs
 per (scenario, U, scheduler) point. Output PNGs land under

@@ -9,10 +9,19 @@
 
 namespace
 {
-    /* Fixed predictor view of the channel — what CATS sees in RX mode. */
-    constexpr double PROB_1W  = 0.07;
-    constexpr double PROB_10W = 0.58;
-    constexpr double PROB_25W = 0.80;
+    /* Fixed predictor view of the channel — what CATS sees in RX mode.
+       These are the empirical decode rates of the replayed CSV, so they must
+       be regenerated together with it: the CSV's success flags come from a
+       success-radius threshold X (ft8-dc's extra/success_probability.py), and
+       changing X changes both. Currently X = 2250 km:
+           1 W  60/160 = 0.37500
+           10 W 131/160 = 0.81875
+           25 W 153/160 = 0.95625
+       (The previous X = 2500 km gave 0.07 / 0.58 / 0.80.) Nothing in the build
+       checks the two against each other. */
+    constexpr double PROB_1W  = 0.38;
+    constexpr double PROB_10W = 0.82;
+    constexpr double PROB_25W = 0.96;
 }
 
 ReplayChannel::ReplayChannel(unsigned int frequency,
