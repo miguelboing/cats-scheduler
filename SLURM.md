@@ -1,17 +1,17 @@
 # SLURM Cheatsheet
 
-Reference for working with the AIRE cluster. Project context: jobs are submitted via `run_aire.sh`, with `--job-name=cats-sweep` and outputs to `cats-<jobid>.out` / `cats-<jobid>.err`.
+Reference for working with a SLURM-based cluster (the directives in this project are set up for AIRE at Leeds). Project context: jobs are submitted via `run_slurm.sh`, with `--job-name=cats-sweep` and outputs to `cats-<jobid>.out` / `cats-<jobid>.err`.
 
 ## Submitting jobs
 
 ```bash
-sbatch run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
+sbatch run_slurm.sh <run_name> [belief_threshold] [utilization_threshold]
 
 # Override defaults via --export
-sbatch --export=N_RUNS=100,MODE=sweep,ALL run_aire.sh my-run
+sbatch --export=N_RUNS=100,MODE=sweep,ALL run_slurm.sh my-run
 
 # Override resource requests on the command line (overrides #SBATCH directives)
-sbatch --time=08:00:00 --cpus-per-task=64 run_aire.sh my-run
+sbatch --time=08:00:00 --cpus-per-task=64 run_slurm.sh my-run
 ```
 
 `ALL` in `--export` means "also pass through my current environment"; without it, the job starts with a clean env.
@@ -50,7 +50,7 @@ scancel --signal=TERM <jobid>   # send SIGTERM first (graceful) before SIGKILL
 sstat -j <jobid> --format=JobID,AveCPU,AveRSS,MaxRSS,NTasks
 squeue -j <jobid> -O JobID,State,TimeUsed,TimeLimit,NumCPUs
 
-# Tail live stdout/stderr (run_aire.sh writes cats-<jobid>.out / .err)
+# Tail live stdout/stderr (run_slurm.sh writes cats-<jobid>.out / .err)
 tail -f cats-<jobid>.out
 tail -f cats-<jobid>.err
 ```
@@ -96,7 +96,7 @@ salloc --time=01:00:00 --cpus-per-task=8 --mem=16G    # then ssh into the alloca
 Useful when sweeping a parameter that the wrapper script can read from `$SLURM_ARRAY_TASK_ID`:
 
 ```bash
-sbatch --array=0-9 run_aire.sh    # 10 tasks, IDs 0..9
+sbatch --array=0-9 run_slurm.sh    # 10 tasks, IDs 0..9
 sbatch --array=0-99%10 ...        # 100 tasks, max 10 concurrent
 scancel <jobid>_5                 # cancel one task
 scancel <jobid>                   # cancel whole array
@@ -104,7 +104,7 @@ scancel <jobid>                   # cancel whole array
 
 ## Project-specific gotchas
 
-- **Don't `make` inside the job.** `run_aire.sh` deliberately skips the build because concurrent jobs race on `main.o` (Makefile `rm`s it then recreates it, leaving a window where the binary is missing). Always run `make` on a login node before `sbatch`.
+- **Don't `make` inside the job.** `run_slurm.sh` deliberately skips the build because concurrent jobs race on `main.o` (Makefile `rm`s it then recreates it, leaving a window where the binary is missing). Always run `make` on a login node before `sbatch`.
 - **Login node is shared.** Heavy `make`/Python on the login node will make you unpopular — use `srun --pty bash` for anything non-trivial.
 - **Time limit is wall clock**, not CPU time. With `--cpus-per-task=32` and `--time=04:00:00`, you have 4 hours wall, not 128 CPU-hours.
 - **`--mem-per-cpu=1G`** combined with `--cpus-per-task=32` requests 32 GB total. Sweep mode (the default) only emits a tiny summary file per sim, so workers stay at tens of MB. Tests mode parses the full ~180 MB JSON log per worker — bump to `--mem-per-cpu=2G` if running tests with many parallel runs. Mixing `--mem` and `--mem-per-cpu` is rejected.
@@ -114,7 +114,7 @@ scancel <jobid>                   # cancel whole array
 ```
 $SLURM_JOB_ID            # numeric job id
 $SLURM_JOB_NAME          # cats-sweep
-$SLURM_SUBMIT_DIR        # cwd at sbatch time (run_aire.sh cd's here)
+$SLURM_SUBMIT_DIR        # cwd at sbatch time (run_slurm.sh cd's here)
 $SLURM_CPUS_PER_TASK     # passed to ProcessPoolExecutor as n_workers
 $SLURM_ARRAY_TASK_ID     # only set inside array jobs
 $SLURM_ARRAY_JOB_ID      # the parent array's job id

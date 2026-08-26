@@ -1,254 +1,270 @@
 # rt-link-sim
 
-Real-time scheduling over an unreliable link — a C++ simulator for wireless communication scheduling algorithms with real-time packet deadline management and channel condition modeling.
+Real-time scheduling over an unreliable link. A C++ simulator for wireless packet scheduling under deadline and channel-quality constraints, driven by a Python experiment harness.
+
+The project's contribution is **CATS** (Channel-Adaptive Transmission Scheduler), which combines a belief about the current channel state with a utilization test to decide *when* to transmit and at *what power*. The repository also implements four baselines so CATS can be measured against them on identical task sets: CHARM, CHEDF, EDF and Rate-Monotonic.
 
 ## Overview
 
-rt-link-sim simulates a wireless communication system where packets with strict deadlines must be transmitted over channels with varying conditions. The simulator models the complete transmission pipeline from packet generation through scheduling, transmission, channel propagation, and reception.
+A simulation advances one frame (time slot) per tick. On every tick:
 
-## Features
+1. Packet generators release packets into the buffer according to their periods.
+2. The ML predictor reports, per channel, the decode probability at each power level the scheduler asked to be predicted.
+3. The scheduler picks one buffered packet and a transmission power, or stays idle, or listens.
+4. The radio interface builds the frame and the physical channel draws the outcome.
+5. The receiver decodes or drops the frame.
+6. The buffer discards packets whose deadline has passed.
 
-- **Packet Generation**: Configurable packet generators with customizable arrival patterns
-  - Fixed-rate packet generation
-  - Extensible base class for custom generators
+A packet needs `frames` successful slots before its deadline to count as delivered.
 
-- **Scheduling Algorithms**: Real-time scheduling with deadline awareness
-  - Earliest Deadline First (EDF) scheduler
-  - Extensible architecture for additional scheduling policies
+## Schedulers
 
-- **Channel Modeling**: Realistic wireless channel simulation
-  - Sigmoid-based probability model
-  - Configurable SNR, noise, and path loss parameters
-  - Multiple frequency support
+| Type in config | Class | Parameters | Notes |
+|---|---|---|---|
+| `CATS` | `CATS_scheduler` | `frequency`, `belief_threshold`, `utilization_threshold` | Channel and belief aware, picks its own power |
+| `CHARM` | `CHARM_scheduler` | `tx_power`, `frequency`, `rx_period` | Baseline, accumulated-probability retransmission over a period-ordered queue |
+| `CHEDF` | `CHEDF_scheduler` | `tx_power`, `frequency`, `rx_period` | CHARM's policy over a deadline-ordered queue |
+| `EDF` | `EDF_scheduler` | `tx_power`, `frequency` | Fixed-power baseline |
+| `Rate_M` | `RM_scheduler` | `tx_power`, `frequency` | Fixed-power baseline |
 
-- **System Components**:
-  - Packet buffer with automatic deadline checking
-  - Transmitter with power control
-  - Receiver with success probability calculation
-  - JSON-based logging for analysis
+The fixed-power baselines are normally run at both 10 W and 25 W, the two upper levels CATS predicts over, so CATS can be compared against a baseline burning comparable energy.
 
-## Architecture
+> **Note:** `CHEDF_scheduler` is a deliberate copy of `CHARM_scheduler` that differs only in its queue comparator. Any change to the shared retransmission or listening logic has to be applied to both files, or the comparison stops being interpretable.
 
-### Core Components
-
-- **BufferPacket**: Manages pending packets and enforces deadline constraints
-- **PacketGenerator**: Creates packets according to specified traffic patterns
-- **Scheduler**: Selects packets for transmission based on scheduling policy
-- **Transmitter**: Prepares frames for transmission with appropriate power levels
-- **SigmoidChannel**: Models channel conditions and calculates reception probability
-- **Receiver**: Decodes received frames and logs results
-
-### Data Flow
-
-1. Packet generators create packets and add them to the buffer
-2. Scheduler selects packets based on deadlines and other criteria
-3. Transmitter prepares the selected packet for transmission
-4. Physical channel applies propagation effects and calculates success probability
-5. Receiver attempts to decode the frame based on channel conditions
-6. Buffer removes packets that miss their deadlines
-
-## Code Quality
-
-The codebase is **cppcheck compliant** with the following checks enabled:
-- Warning detection
-- Style checks
-- Performance analysis
-- Portability verification
-
-## Building
-
-### Prerequisites
-
-- C++ compiler with C++11 support (g++ recommended)
-- Make
-- [nlohmann/json](https://github.com/nlohmann/json) library (included in `libs/`)
-
-### Compilation
+## Build
 
 ```bash
-make
-```
-
-This will compile all components and create the executable `main.o`.
-
-### Clean Build
-
-```bash
+make            # produces the executable ./main.o
 make clean
-make
 ```
 
-## Usage
+The top-level Makefile recurses into `system_model/`, `packet_generators/`, `schedulers/` and `physical_channels/`, compiles each component into an object file in the repository root, then links everything into `main.o`.
 
-### Basic Example
+**Prerequisites**
 
-```cpp
-#include "system_model/system_model.hpp"
-#include "packet_generators/fixed_rate/fixed_rate.hpp"
-#include "schedulers/earliest_deadline_first/edf_scheduler.hpp"
-#include "physical_channels/sigmoid_channel/sigmoid_channel.hpp"
+- `g++` with C++17 support (the code uses `std::optional`)
+- `make`
+- Python 3.8 or newer with `matplotlib`, for the harness and the plots
+- [nlohmann/json](https://github.com/nlohmann/json) and [kovian](https://github.com/RubyGB/kovian), both vendored in `libs/`
 
-// Initialize system components
-std::shared_ptr<unsigned int> system_tick = std::make_shared<unsigned int>(0U);
-BufferPacket buffer(system_tick);
+Header dependencies are not tracked by the Makefile, so run `make clean` before `make` after editing a header. After any C++ edit, rebuild before running the Python harness.
 
-// Configure packet generators
-std::vector<fixed_rate_packet_t> packets;
-packets.push_back(fixed_rate_packet_t(5U, 2U, 0.9, 1U, 5U, 0U));
-// Parameters: period, frames, reliability, id, deadline, offset
+## Running a single simulation
 
-FixedRate_PacketGen packet_gen(system_tick, packets, buffer.buffer_packet, spawn_log);
+```bash
+./main.o [config_file] [log_file] [summary]
+```
 
-// Initialize scheduler and transmitter
-EDF_scheduler scheduler(12, 14074000, buffer.buffer_packet);
-Transmitter transmitter(buffer.buffer_packet);
+Defaults are `simulation_config.json` for the config and `simulation_log.json` for the log. Passing `summary` as the third argument silences stdout, skips the per-frame JSON log and writes only a small aggregate, which is what the harness uses.
 
-// Initialize channel
-SigmoidChannel channel(14074000);
+### Config format
 
-// Initialize receiver
-Receiver receiver(system_tick);
+`simulation_config.json` has four sections:
 
-// Run simulation
-for (unsigned int i = 0; i < num_frames; i++) {
-    packet_gen.generate_packets();
-    auto scheduled = scheduler.schedule_frame();
-    auto transmitted = transmitter.transmit_frame(scheduled);
-    auto received = channel.gen_frame_with_probability(transmitted);
-    receiver.recv_frame(received);
-    buffer.check_deadlines();
-    (*system_tick)++;
+```json
+{
+    "simulation": {
+        "duration": 1500,
+        "predict_error": 0.0,
+        "window_k": 100,
+        "seed": 42
+    },
+    "scheduler": {
+        "type": "CATS",
+        "frequency": 14074000,
+        "belief_threshold": 0.7,
+        "utilization_threshold": 0.9
+    },
+    "channels": [
+        { "type": "sigmoid", "name": "channel_20m", "frequency": 14074000 }
+    ],
+    "packet_generators": [
+        {
+            "type": "fixed_rate",
+            "packets": [
+                {
+                    "id": 1,
+                    "relative_deadline": 24,
+                    "frames": 1,
+                    "reliability": 0.56,
+                    "period": 24,
+                    "phase": 0
+                }
+            ]
+        }
+    ]
+}
+```
+
+- `simulation`: `duration` in frames, plus the optional `seed`, `predict_error` (half-width of the uniform noise injected into each predicted decode probability) and `window_k`.
+- `scheduler`: `type` plus the parameters listed in the table above.
+- `channels`: `sigmoid` takes `name` and `frequency`; `replay` takes `frequency` and `csv_path`.
+- `packet_generators`: only `fixed_rate` is wired in. Packet fields are `id`, `period`, `relative_deadline`, `frames` (transmission length in slots), `reliability` (required reception probability) and `phase`.
+
+## Running the experiment harness
+
+`run_simulation.py` generates task sets with UUniFast, rewrites the config per run, invokes the C++ binary in parallel across every (scenario, utilization, scheduler, seed) point, and plots the result.
+
+```bash
+python run_simulation.py <n_runs> <mode> <run_name> [belief_threshold] [utilization_threshold]
+```
+
+Three modes:
+
+- `sweep`: schedulability and energy against utilization, one curve per scheduler, at zero prediction error, so no gap on the figure can be blamed on predictor noise. Nine schedulers are compared, covering the full cross of retransmission policy and queue discipline.
+- `error_sweep`: the same sweep repeated at each level in `PREDICT_ERRORS` (0.0, 0.15, 0.30), drawing one curve per predictor-sensitive scheduler per error level. It uses a reduced roster of five, all deadline-ordered, so the surviving gaps come from the power policy rather than the queue discipline.
+- `tests`: per-test diagnostic runs. This is by far the heaviest mode, because it parses the full simulation log in Python.
+
+An unknown mode is rejected before any work starts.
+
+Outputs land under `tests/<run_name>/`. Utilization is swept over 0.1 to 1.0 and three scenarios vary the task count (4, 10 and 20 tasks).
+
+### Environment variables
+
+| Variable | Effect |
+|---|---|
+| `SEED` | Master seed. Per-simulation seeds are derived deterministically, so the same value reproduces identical figures. Unset means clock-based and non-deterministic. |
+| `WINDOW_K` | Overrides the weakly-hard window length (default 100). |
+| `PLOT_FORMATS` | Comma-separated output formats, default `png,pdf`. |
+| `MPL_USETEX` | Renders figure text through a real LaTeX installation instead of matplotlib's mathtext. |
+
+### Replay experiment
+
+`hf_experiment/run.py` reuses the same sweep machinery over a `ReplayChannel`, which replays per-tick outcomes recorded in `frame_success.csv` and shows the predictor a fixed view of the channel.
+
+```bash
+SEED=42 python hf_experiment/run.py <n_runs> [sweep|error_sweep]
+```
+
+### Cluster runs
+
+Publication-level results need much longer simulations than the defaults: hundreds of thousands of ticks per run, and enough independent runs per point that each curve is an average rather than a single draw. That is hours of CPU time even with the sweep parallelised, so a cluster is usually the practical way to produce them. `run_slurm.sh` is there to help with that on SLURM-based systems.
+
+```bash
+sbatch run_slurm.sh <run_name> [belief_threshold] [utilization_threshold]
+sbatch --export=N_RUNS=200,MODE=error_sweep,SEED=42,ALL run_slurm.sh <run_name>
+```
+
+The script requests the resources through `#SBATCH` directives, loads the toolchain and Python environment, and then invokes `run_simulation.py` with `N_RUNS`, `MODE` and the usual environment variables passed in via `--export`. It ships configured for the AIRE cluster at Leeds, so the notification address, time limit, CPU count, `module load` lines and conda environment name at the top of the file are the parts to adapt to another site.
+
+It deliberately does **not** build, because concurrent jobs would race on `main.o`, so run `make` on a login node first. See [SLURM.md](SLURM.md) for submission and monitoring recipes.
+
+## Metrics
+
+Four metrics are computed from a single pass over the per-instance delivered sequence:
+
+- **`sched_ratio`**: fraction of packet ids whose whole-run delivery rate met their `reliability`. Insensitive to *when* misses land, since an early burst is averaged away by a long clean tail.
+- **`sched_ratio_mk`**: fraction of ids meeting a weakly-hard (m,k)-firm constraint, that is, at least `m = ceil(reliability * k)` deliveries in every window of `k` consecutive instances. Windows slide rather than tumble, so a burst straddling a boundary cannot be masked twice. Burst-sensitive, and it converges to `sched_ratio` as `k` grows.
+- **`max_burst`**: longest run of consecutive undelivered instances. Parameter-free, and often the quantity a control loop actually cares about. Aggregated but not plotted, because it spans three orders of magnitude across utilization.
+- **`total_energy`**: sum of transmission power over every transmitted slot.
+
+Two constraints bound `k`, and the harness warns at runtime when either is violated. It must be at least `1/(1 - reliability)`, or `m` equals `k` and the window degenerates into a zero-miss requirement. It must also be no larger than the number of instances an id produces, or that id has no complete window and is scored as vacuously met.
+
+Because an id passes only if every window holds, `sched_ratio_mk` can only decrease as a run gets longer. Comparisons between schedulers are therefore valid only at equal `duration`.
+
+## Reproducibility
+
+Set `SEED` before running the harness:
+
+```bash
+SEED=42 python run_simulation.py 50 sweep my-run
+```
+
+A per-simulation seed is then derived from a hash of the master seed, the test name and the run index. It seeds Python's `random` for UUniFast and is propagated to the C++ side, where the receiver, the sigmoid channel and the Markov chain each get a distinct sub-seed.
+
+## Outputs
+
+- `simulation_log.json`: per-tick log. Large, roughly 8 MB for a 5000-frame run.
+- `generated_packets.json`, `received_packets.json`, `<scheduler>_scheduled_packets.json`: per-component logs.
+- `results_*.png` and `results_*.pdf`: figures from the harness. PDFs embed Type 42 fonts, since IEEE and ACM submission checks reject Type 3.
+
+All JSON, PNG, PDF and SVG outputs are gitignored.
+
+### Log formats
+
+```jsonc
+// generated_packets.json
+{
+  "system_tick": 0, "packet_id": 1, "packet_id_count": 0,
+  "deadline": 24, "frames": 1, "period": 24,
+  "reliability_req": 0.56, "is_periodic": true,
+  "generator_type": "FixedRate"
 }
 
-// Save results
-receiver.save_to_file("receiver_results.json");
+// received_packets.json
+{
+  "system_tick": 1, "packet_id": 2, "packet_id_count": 0,
+  "frame_count": 0, "frames": 1, "deadline": 4,
+  "frequency": 14074000, "transmission_power": 10,
+  "success_prob": 0.9329131, "reliability_req": 0.77,
+  "received": true
+}
 ```
 
-### Running the Example
-
-```bash
-./main.o
-```
-
-This runs the default simulation from `main.cpp` and generates:
-- `generated_packets.json`: Log of all generated packets
-- `received_packets.json`: Log of all received packets with success/failure status
-
-## Configuration
-
-### Packet Generator Parameters
-
-Fixed-rate packets are configured with:
-- **Period**: Frames between packet arrivals
-- **Frames**: Number of frames required to transmit the packet
-- **Reliability**: Required probability of successful reception (0.0-1.0)
-- **ID**: Unique identifier for the packet flow
-- **Deadline**: Relative deadline in frames
-- **Offset**: Initial delay before first packet
-
-### Scheduler Parameters
-
-EDF scheduler requires:
-- **Subframe size**: Number of symbols per frame
-- **Frequency**: Operating frequency in Hz
-- **Buffer**: Reference to the packet buffer
-
-### Channel Parameters
-
-Sigmoid channel supports:
-- **Frequency**: Operating frequency
-- **SNR50**: SNR value at 50% success probability
-- **Slope**: Steepness of the sigmoid curve
-- **Noise floor**: Receiver noise level in dBm
-- **Path loss**: Channel path loss in dB
-
-## Project Structure
+## Project structure
 
 ```
-.
-├── main.cpp                          # Example simulation
-├── Makefile                          # Build configuration
-├── system_model/                     # Core data structures
-│   ├── buffer_packet/                # Packet buffer management
-│   ├── transmitter/                  # Frame transmission
-│   └── receiver/                     # Frame reception
-├── packet_generators/                # Traffic generation
-│   └── fixed_rate/                   # Fixed-rate generator
-├── schedulers/                       # Scheduling algorithms
-│   └── earliest_deadline_first/      # EDF implementation
-├── physical_channels/                # Channel models
-│   └── sigmoid_channel/              # Sigmoid probability model
-└── libs/                             # External libraries
-    └── nlohmann/                     # JSON library
+main.cpp                         # config-driven simulator entry point
+run_simulation.py                # experiment harness: task sets, sweeps, plots
+run_slurm.sh                     # SLURM submission script
+schedulers.hpp                   # umbrella include for all schedulers
+schedulers/
+  base_scheduler.hpp             # interface
+  cats/                          # CATS, channel and belief aware
+  charm/                         # CHARM baseline
+  chedf/                         # CHARM's policy over an EDF queue
+  earliest_deadline_first/       # EDF baseline
+  rate_monotonic/                # Rate-Monotonic baseline
+system_model/
+  system_model.hpp               # shared types
+  buffer_packet/                 # packet buffer and deadline enforcement
+  radio_interface/               # transmitter side
+  target_receiver/               # receiver side
+  ml_predictor/                  # channel-state predictor used by CATS
+packet_generators/
+  fixed_rate/                    # the only generator currently wired in
+physical_channels/
+  sigmoid_channel/               # SNR to success-probability sigmoid
+  replay_channel/                # replays recorded per-tick outcomes
+  channel_20m/                   # FSMC state data for the 20 m band
+hf_experiment/                   # replay sweep built on run_simulation.py
+libs/                            # vendored dependencies
 ```
 
-## Extending the Simulator
+## Extending the simulator
 
-### Adding a New Scheduler
+Each component directory carries its own Makefile, invoked from the parent one.
 
-1. Inherit from `BaseScheduler`
-2. Implement `schedule_frame()` method
-3. Add Makefile in `schedulers/<your_scheduler>/`
-4. Update main Makefile
+**A new scheduler**: subclass `BaseScheduler`, implement `do_schedule_frame()` and `get_name()`, add a Makefile under `schedulers/<name>/`, wire it into the parent Makefile, add the include to `schedulers.hpp`, and extend the `sched_type` chain in `main.cpp`.
 
-### Adding a New Packet Generator
+Two traps worth knowing about:
 
-1. Inherit from `BasePacketGenerator`
-2. Implement `generate_packets()` method
-3. Add Makefile in `packet_generators/<your_generator>/`
-4. Update main Makefile
+- `get_prediction_powers()` must return the power the scheduler actually transmits at. CHARM once hardcoded 10 W while transmitting at its configured power, which silently made a 25 W run decide retransmissions from the 10 W decode probability.
+- `get_name()` has to embed the power for any scheduler type that runs at more than one power level, or two runs overwrite each other's `<scheduler>_scheduled_packets.json`.
 
-### Adding a New Channel Model
+**A new packet generator**: subclass `BasePacketGenerator`, implement `generate_packets()`, add a Makefile under `packet_generators/<name>/` and wire it into the parent Makefile.
 
-1. Inherit from `BasePhysicalChannel`
-2. Implement `gen_frame_with_probability()` method
-3. Add Makefile in `physical_channels/<your_channel>/`
-4. Update main Makefile
+**A new channel model**: subclass `BasePhysicalChannel`, implement `gen_frame_with_probability()` and `gen_probability()`, add a Makefile under `physical_channels/<name>/` and wire it into the parent Makefile.
 
-## Output Format
+## Code quality
 
-### Generated Packets Log
-```json
-[
-  {
-    "system_tick": 0,
-    "packet_id": 1,
-    "packet_id_count": 0,
-    "deadline": 5,
-    "frames": 2,
-    "reliability_req": 0.9,
-    "generator_type": "FixedRate"
-  }
-]
-```
+The codebase is cppcheck compliant with warning, style, performance and portability checks enabled. Static analysis runs in CI from `.github/workflows/static-analysis.yml`. Please do not introduce new warnings.
 
-### Received Packets Log
-```json
-[
-  {
-    "system_tick": 1,
-    "packet_id": 1,
-    "packet_id_count": 0,
-    "frame_count": 1,
-    "success_prob": 0.95,
-    "decoded": true
-  }
-]
-```
+Shared mutable state is passed with `std::shared_ptr`, as with `system_tick`, `buffer_packet` and `spawn_log` in `main.cpp`.
 
 ## Credits
 
-This project uses the following open-source libraries:
-
-- **[nlohmann/json](https://github.com/nlohmann/json)** - JSON for Modern C++ by Niels Lohmann (MIT License)
+- **[nlohmann/json](https://github.com/nlohmann/json)** by Niels Lohmann, JSON for Modern C++ (MIT License)
+- **[kovian](https://github.com/RubyGB/kovian)**, a single-header library for finite state space Markov chain simulations
 
 ## License
 
-See [LICENSE](LICENSE) file for details.
+See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions are welcome! Please ensure:
-- Code follows existing style conventions
-- New components include appropriate Makefiles
-- Complex features include usage examples
+Active work happens on `dev`, and pull requests land on `main`. Please make sure that:
+
+- Code follows the existing style conventions
+- New components include their own Makefile
+- Static analysis stays clean

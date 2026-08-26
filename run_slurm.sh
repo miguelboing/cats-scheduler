@@ -25,27 +25,28 @@
 # --mem-per-cpu to 2G.
 
 # Submit with:
-#     sbatch run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
+#     sbatch run_slurm.sh <run_name> [belief_threshold] [utilization_threshold]
 # Override defaults via --export, e.g.:
-#     sbatch --export=N_RUNS=100,MODE=sweep,ALL       run_aire.sh <run_name> [belief_threshold] [utilization_threshold]
-#     sbatch --export=N_RUNS=200,MODE=error_sweep,ALL run_aire.sh <run_name>
+#     sbatch --export=N_RUNS=100,MODE=sweep,ALL       run_slurm.sh <run_name> [belief_threshold] [utilization_threshold]
+#     sbatch --export=N_RUNS=200,MODE=error_sweep,ALL run_slurm.sh <run_name>
 # Reproducible run (same SEED → bit-identical output PNGs):
-#     sbatch --export=SEED=42,ALL run_aire.sh <run_name>
+#     sbatch --export=SEED=42,ALL run_slurm.sh <run_name>
 # Override the weakly-hard (m,k) window used by the sched_ratio_mk curve
 # (default 100, which makes m/k reproduce the 2-decimal reliability exactly;
 # must be >= 10 for the 0.9 reliability tasks — see CLAUDE.md):
-#     sbatch --export=WINDOW_K=50,ALL run_aire.sh <run_name>
+#     sbatch --export=WINDOW_K=50,ALL run_slurm.sh <run_name>
 
 set -euo pipefail
 
 # --- Modules ----------------------------------------------------------------
-# Adjust names to whatever AIRE actually exposes (`module avail` to check).
+# Site-specific: adjust to whatever your cluster exposes (`module avail` to
+# check). These names are the ones on AIRE (Leeds).
 module load miniforge
 module load gcc
 
 # --- Python env -------------------------------------------------------------
 # Create once on a login node:  conda create -n rt-link-sim python=3.12 numpy matplotlib
-# (Renamed from cats-scheduler; on an existing AIRE account run
+# (Renamed from cats-scheduler; on an account with the old environment run
 #  `conda rename -n cats-scheduler rt-link-sim` before the next submission.)
 conda activate rt-link-sim
 
