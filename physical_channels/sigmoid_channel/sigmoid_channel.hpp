@@ -15,7 +15,7 @@ public:
 
     double gen_probability(unsigned int transmission_power) override;
     received_frame_t gen_frame_with_probability(transmitted_frame_t transmitted_frame) override;
-    void advance_fsmc_state(void);
+    void advance_fsmc_state(void) override;
     int get_fsmc_state(void);
 
     // Reseed the channel's RNGs (initial-state draw + kovian transitions) and

@@ -390,9 +390,8 @@ int main(int argc, char* argv[])
         {
             if (summary_only)
             {
-                auto key = std::make_pair(missed.id, missed.id_count);
-                if (instance_frames_needed.find(key) == instance_frames_needed.end())
-                    instance_frames_needed[key] = missed.frames;
+                instance_frames_needed.try_emplace(
+                    std::make_pair(missed.id, missed.id_count), missed.frames);
             }
             else
             {
@@ -421,9 +420,8 @@ int main(int argc, char* argv[])
         {
             if (summary_only)
             {
-                auto key = std::make_pair(dropped.id, dropped.id_count);
-                if (instance_frames_needed.find(key) == instance_frames_needed.end())
-                    instance_frames_needed[key] = dropped.frames;
+                instance_frames_needed.try_emplace(
+                    std::make_pair(dropped.id, dropped.id_count), dropped.frames);
             }
             else
             {

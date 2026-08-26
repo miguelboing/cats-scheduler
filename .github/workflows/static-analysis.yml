@@ -26,7 +26,7 @@ jobs:
           force_language: c++
           enable: warning,style,performance,portability
 
-          other_options: --error-exitcode=1 -I$PWD --inline-suppr --suppress=unusedFunction --suppress=useStlAlgorithm
+          other_options: --error-exitcode=1 -I$PWD --inline-suppr --suppress=unusedFunction --suppress=useStlAlgorithm --suppress=normalCheckLevelMaxBranches
 
       - name: Display cppcheck report
         if: always()

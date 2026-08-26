@@ -9,7 +9,7 @@
 Transmitter::Transmitter(std::shared_ptr<std::vector<packet_t>> buffer_packet):
     buffer_packet(buffer_packet) {};
 
-std::optional<transmitted_frame_t> Transmitter::transmit_frame(scheduled_frame_t scheduled_frame)
+std::optional<transmitted_frame_t> Transmitter::transmit_frame(const scheduled_frame_t& scheduled_frame)
 {
     transmitted_frame_t transmitted_frame;
     transmitted_frame.transmission_power = scheduled_frame.transmission_power;
