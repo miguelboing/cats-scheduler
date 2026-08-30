@@ -47,11 +47,30 @@ packet_generators/
 physical_channels/
   base_physical_channel.hpp
   sigmoid_channel/               # SNR→success-prob sigmoid
-  channel_20m/fsmc_states.json   # FSMC state data for the 20m band
+  replay_channel/                # replays recorded per-tick outcomes
+  channel_20m/                   # FSMC states + transition matrix, 20m band
 libs/                            # vendored deps (nlohmann, kovian)
 ```
 
 Each component subdir has its own Makefile invoked from the top-level one. To add a scheduler/generator/channel: subclass the matching `base_*.hpp`, drop a Makefile in a new subdir, and wire it into the parent Makefile (and `schedulers.hpp` for schedulers, plus the `sched_type` chain in `main.cpp`).
+
+## Channel model (FSMC)
+
+`channel_20m/` holds two files read at construction: `transition_matrix.kov` (the chain) and `fsmc_states.json` (one sigmoid per state). The chain is a **6-state one-way ring**, `0→1→2→3→4→5→0`, with a 0.98 self-loop, so mean dwell is 50 ticks and a full lap is about 300.
+
+⚠️ **The 6 slots carry only 3 distinct curves, mirrored as a triangle. The duplicates are load-bearing, do not deduplicate them.**
+
+| Slot | Curve | slope | snr50 | max_saturation | 1 W / 10 W / 25 W |
+|---|---|---|---|---|---|
+| 0, 5 | Good | 0.4 | 10 | 0.95 | 0.475 / 0.933 / 0.946 |
+| 1, 4 | Moderate | 0.3 | 15 | 0.85 | 0.155 / 0.695 / 0.796 |
+| 2, 3 | Poor | 0.2 | 20 | 0.70 | 0.083 / 0.350 / 0.482 |
+
+Laying the three qualities out as `G, M, P, P, M, G` is what makes the ring descend and then climb back: the walk goes Good, Moderate, Poor, Poor, Moderate, Good and wraps into Good again. Collapsing the mirror to three states would put a jump from worst straight to best at the wrap, which is the one transition a real HF channel does not make. It also balances the cycle, with equal expected time in Good and in Poor.
+
+Two things to keep in sync if the **number of states** ever changes: `kovian::MarkovChain<6>` in `sigmoid_channel.hpp`, and the two `std::uniform_int_distribution<int> distribution(0, 5)` initial-state draws in `sigmoid_channel.cpp` (constructor and `seed_rng()`). Nothing couples them to the row count of the `.kov` file, so a mismatch is silent.
+
+`noise_floor_dbm` is currently **dead data**. `gen_probability()` has the noise term commented out and uses received power directly as the SNR, so only `slope`, `snr_50_db` and `max_saturation` affect results. The operating points are fixed by the 20 dB pathloss: 1 W lands at 10 dB, 10 W at 20 dB, 25 W at 24 dB.
 
 ## Config format
 

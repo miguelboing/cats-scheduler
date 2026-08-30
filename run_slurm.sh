@@ -46,9 +46,23 @@ module load gcc
 
 # --- Python env -------------------------------------------------------------
 # Create once on a login node:  conda create -n rt-link-sim python=3.12 numpy matplotlib
-# (Renamed from cats-scheduler; on an account with the old environment run
-#  `conda rename -n cats-scheduler rt-link-sim` before the next submission.)
-conda activate rt-link-sim
+# The project was renamed from cats-scheduler, so accounts created before the
+# rename still have an environment under the old name. Either name is accepted
+# here; override both with  sbatch --export=CONDA_ENV=my-env,ALL ...
+CONDA_ENV="${CONDA_ENV:-rt-link-sim}"
+if ! conda activate "${CONDA_ENV}" 2>/dev/null; then
+    if conda activate cats-scheduler 2>/dev/null; then
+        echo "NOTE: conda env '${CONDA_ENV}' not found, using legacy 'cats-scheduler'." >&2
+        echo "      Rename it on a login node:  conda rename -n cats-scheduler rt-link-sim" >&2
+    else
+        echo "ERROR: no conda env named '${CONDA_ENV}' or 'cats-scheduler'." >&2
+        echo "       Create one on a login node:" >&2
+        echo "         conda create -n ${CONDA_ENV} python=3.12 numpy matplotlib" >&2
+        echo "       Environments visible to this job:" >&2
+        conda info --envs >&2 || true
+        exit 1
+    fi
+fi
 
 # --- Workdir ----------------------------------------------------------------
 cd "${SLURM_SUBMIT_DIR}"

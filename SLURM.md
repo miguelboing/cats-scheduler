@@ -104,6 +104,7 @@ scancel <jobid>                   # cancel whole array
 
 ## Project-specific gotchas
 
+- **The conda env must exist before you submit.** `run_slurm.sh` activates `rt-link-sim`, falling back to the pre-rename name `cats-scheduler`. A job that dies immediately with `EnvironmentNameNotFound: Could not find conda environment` has neither. Create it once on a login node with `conda create -n rt-link-sim python=3.12 numpy matplotlib`, rename an existing one with `conda rename -n cats-scheduler rt-link-sim`, or point the script elsewhere with `sbatch --export=CONDA_ENV=my-env,ALL ...`.
 - **Don't `make` inside the job.** `run_slurm.sh` deliberately skips the build because concurrent jobs race on `main.o` (Makefile `rm`s it then recreates it, leaving a window where the binary is missing). Always run `make` on a login node before `sbatch`.
 - **Login node is shared.** Heavy `make`/Python on the login node will make you unpopular — use `srun --pty bash` for anything non-trivial.
 - **Time limit is wall clock**, not CPU time. With `--cpus-per-task=32` and `--time=04:00:00`, you have 4 hours wall, not 128 CPU-hours.
